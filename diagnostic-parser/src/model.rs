@@ -12,6 +12,7 @@
 //! `String` allocations for a typical 36 MB file.
 
 use std::fmt;
+use std::ops::Not as _;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -85,10 +86,10 @@ pub struct DiagnosticReport {
 }
 
 impl FromStr for DiagnosticReport {
-    type Err = serde_json::Error;
+    type Err = DiagnosticError;
 
     fn from_str(json: &str) -> std::result::Result<Self, Self::Err> {
-        serde_json::from_str::<Self>(json)
+        serde_json::from_str::<Self>(json).map_err(Into::into)
     }
 }
 
@@ -100,13 +101,12 @@ impl DiagnosticReport {
             path: path.to_path_buf(),
             source,
         })?;
-        Ok(data.parse()?)
+        data.parse()
     }
 
     /// Parse a diagnostic report from a byte slice.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        let report: Self = serde_json::from_slice(bytes)?;
-        Ok(report)
+        serde_json::from_slice::<Self>(bytes).map_err(Into::into)
     }
 
     /// The report creation time as a [`DateTime<Utc>`].
@@ -125,14 +125,10 @@ impl DiagnosticReport {
     /// large files, prefer [`parse_log_entries_ref`](Self::parse_log_entries_ref)
     /// which borrows from the log content already in memory.
     pub fn parse_log_entries(&self) -> Vec<LogEntry> {
-        let mut all_entries: Vec<LogEntry> = Vec::new();
-
-        for log_file in &self.logs {
-            let entries = LogEntry::parse_log_content(&log_file.title, &log_file.content);
-            all_entries.extend(entries);
-        }
-
-        all_entries
+        self.logs
+            .iter()
+            .flat_map(|log_file| LogEntry::parse_log_content(&log_file.title, &log_file.content))
+            .collect()
     }
 
     /// Zero-copy version of [`parse_log_entries`](Self::parse_log_entries).
@@ -312,11 +308,7 @@ impl Extension {
             // The part inside the parens is typically "version, Enabled/Disabled".
             let version = inner.split(',').next().map(|v| v.trim().to_owned());
             Extension {
-                name: if name_part.is_empty() {
-                    None
-                } else {
-                    Some(name_part.to_owned())
-                },
+                name: name_part.is_empty().not().then(|| name_part.to_owned()),
                 version,
             }
         } else {
@@ -713,11 +705,7 @@ impl CrashReportEntry {
             .filter(|e| e.is_panic())
             .filter_map(|e| {
                 let diff = (e.timestamp_utc() - crash_ts).abs();
-                if diff <= max_drift {
-                    Some((diff, e))
-                } else {
-                    None
-                }
+                (diff <= max_drift).then_some((diff, e))
             })
             .min_by_key(|(diff, _)| *diff)
             .map(|(_, entry)| entry)
@@ -748,11 +736,7 @@ impl CrashReportEntry {
             .filter(|e| e.is_panic())
             .filter_map(|e| {
                 let diff = (e.timestamp_utc() - crash_ts).abs();
-                if diff <= max_drift {
-                    Some((diff, e))
-                } else {
-                    None
-                }
+                (diff <= max_drift).then_some((diff, e))
             })
             .min_by_key(|(diff, _)| *diff)
             .map(|(_, entry)| entry)
