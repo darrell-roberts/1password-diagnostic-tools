@@ -5,13 +5,9 @@
 //! ```sh
 //! cargo run -- path/to/file.1pdiagnostics
 //! ```
-
 mod app;
 mod ui;
-
-use std::io;
-use std::process;
-
+use app::App;
 use crossterm::{
     event::{
         self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind,
@@ -19,19 +15,16 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+use diagnostic_parser::DiagnosticReport;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-
-use app::App;
-use diagnostic_parser::DiagnosticReport;
+use std::io;
+use std::process;
 
 fn main() {
-    let path = match std::env::args().nth(1) {
-        Some(p) => p,
-        None => {
-            eprintln!("usage: diagnostic-tui <path-to-.1pdiagnostics>");
-            process::exit(1);
-        }
+    let Some(path) = std::env::args().nth(1) else {
+        eprintln!("usage: diagnostic-tui <path-to-.1pdiagnostics>");
+        process::exit(1);
     };
 
     let report = match DiagnosticReport::from_file(&path) {

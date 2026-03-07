@@ -264,7 +264,7 @@ impl LogFileFilter {
 ///
 /// These are updated by the rendering code in `ui.rs` each frame and read
 /// by the key handlers so that Page Up / Page Down move by exactly one
-/// screenful.
+/// screen height.
 #[derive(Debug, Clone, Copy)]
 pub struct ViewportHeights {
     pub overview: u16,
