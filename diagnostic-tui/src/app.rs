@@ -365,9 +365,13 @@ pub struct App {
     /// Last-known viewport heights, updated each frame by `ui::draw`.
     pub viewport: ViewportHeights,
 
-    /// Anchor index (into `filtered_indices`) for visual selection mode.
+    /// Anchor index (into `filtered_indices`) for visual selection mode on the Logs tab.
     /// `None` when not in select mode.
     pub select_anchor: Option<usize>,
+
+    /// Anchor index (into `crash_report_entries`) for visual selection on the Crash list.
+    /// `None` when not in select mode.
+    pub crash_select_anchor: Option<usize>,
 
     /// System clipboard handle, created once at startup.
     pub clipboard: Option<Clipboard>,
@@ -470,6 +474,7 @@ impl App {
             log_file_picker_selected: 0,
             viewport: ViewportHeights::default(),
             select_anchor: None,
+            crash_select_anchor: None,
             clipboard: Clipboard::new().ok(),
             copied_at: None,
         }
@@ -555,14 +560,22 @@ impl App {
         match self.input_mode {
             InputMode::Search => self.handle_search_key(key),
             InputMode::Normal => self.handle_normal_key(key),
+            InputMode::Select if self.tab == Tab::CrashReports => self.handle_crash_select_key(key),
             InputMode::Select => self.handle_select_key(key),
         }
     }
 
-    /// Returns the ordered (start, end) selection range if in select mode.
+    /// Returns the ordered (start, end) selection range for the Logs tab if in select mode.
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.select_anchor?;
         let cursor = self.log_list_state.selected;
+        Some((anchor.min(cursor), anchor.max(cursor)))
+    }
+
+    /// Returns the ordered (start, end) selection range for the Crash list if in select mode.
+    pub fn crash_selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.crash_select_anchor?;
+        let cursor = self.crash_list_state.selected;
         Some((anchor.min(cursor), anchor.max(cursor)))
     }
 
@@ -600,6 +613,72 @@ impl App {
 
         // Exit select mode.
         self.select_anchor = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Format a single crash report (and its linked panic entry) as copyable plain text.
+    fn format_crash_text(&self, crash: &CrashReportEntry) -> String {
+        let ts = crash
+            .timestamp_utc()
+            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| format!("{}", crash.timestamp));
+
+        let mut text = format!(
+            "Report ID: {}\nType:      {}\nTimestamp: {}\nTag:       {}",
+            crash.report_id, crash.report_type, ts, crash.diagnostic_report_tag,
+        );
+
+        if let Some(entry) = crash.find_panic_entry(&self.all_entries) {
+            text.push_str(&format!(
+                "\n\nLinked Panic Entry\nLog File:  {}\nThread:    {}\nSource:    {}\nTimestamp: {}\n\nMessage:\n{}",
+                entry.log_file_title,
+                entry.thread,
+                entry.source.raw(),
+                entry.timestamp,
+                entry.message,
+            ));
+            if entry.has_continuation() {
+                text.push_str(&format!(
+                    "\n\nCall Stack ({} frames):",
+                    entry.continuation.len()
+                ));
+                for frame_line in &entry.continuation {
+                    text.push('\n');
+                    text.push_str(frame_line.trim_start());
+                }
+            }
+        } else {
+            text.push_str("\n\nNo matching panic log entry found.");
+        }
+
+        text
+    }
+
+    /// Copy the selected crash reports to the system clipboard.
+    fn copy_crash_selection(&mut self) {
+        let (start, end) = match self.crash_selection_range() {
+            Some(range) => range,
+            None => {
+                // Single-entry copy when no visual selection is active.
+                let idx = self.crash_list_state.selected;
+                (idx, idx)
+            }
+        };
+
+        let text: String = (start..=end)
+            .filter_map(|i| self.report.crash_report_entries.get(i))
+            .map(|crash| self.format_crash_text(crash))
+            .collect::<Vec<_>>()
+            .join("\n\n---\n\n");
+
+        if let Some(ref mut cb) = self.clipboard
+            && cb.set_text(text).is_ok()
+        {
+            self.copied_at = Some(Instant::now());
+        }
+
+        // Exit select mode.
+        self.crash_select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
 
@@ -644,6 +723,53 @@ impl App {
                 let max = self.filtered_indices.len();
                 self.log_list_state.end(max);
                 self.detail_scroll = 0;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Handle keys while in visual-select mode on the Crash list.
+    fn handle_crash_select_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            // Cancel selection.
+            KeyCode::Esc => {
+                self.crash_select_anchor = None;
+                self.input_mode = InputMode::Normal;
+            }
+            // Yank (copy) selection.
+            KeyCode::Char('y') => {
+                self.copy_crash_selection();
+            }
+            // Navigation still works while selecting.
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.crash_list_state.up();
+                self.crash_detail_scroll = 0;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                let max = self.report.crash_report_entries.len();
+                self.crash_list_state.down(max);
+                self.crash_detail_scroll = 0;
+            }
+            KeyCode::PageUp => {
+                let page = self.viewport.crash_list as usize;
+                self.crash_list_state.page_up(page);
+                self.crash_detail_scroll = 0;
+            }
+            KeyCode::PageDown => {
+                let page = self.viewport.crash_list as usize;
+                let max = self.report.crash_report_entries.len();
+                self.crash_list_state.page_down(page, max);
+                self.crash_detail_scroll = 0;
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.crash_list_state.home();
+                self.crash_detail_scroll = 0;
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                let max = self.report.crash_report_entries.len();
+                self.crash_list_state.end(max);
+                self.crash_detail_scroll = 0;
             }
             _ => {}
         }
@@ -970,16 +1096,27 @@ impl App {
             KeyCode::Home | KeyCode::Char('g') => self.navigate_home(),
             KeyCode::End | KeyCode::Char('G') => self.navigate_end(),
 
-            // Visual select mode (Logs tab only).
+            // Visual select mode (Logs tab).
             KeyCode::Char('v') if self.tab == Tab::Logs => {
                 self.select_anchor = Some(self.log_list_state.selected);
                 self.input_mode = InputMode::Select;
             }
 
-            // Copy single entry under cursor (Logs tab only).
+            // Visual select mode (Crash Reports list — only when list is focused).
+            KeyCode::Char('v') if self.tab == Tab::CrashReports && !self.detail_focused => {
+                self.crash_select_anchor = Some(self.crash_list_state.selected);
+                self.input_mode = InputMode::Select;
+            }
+
+            // Copy single entry under cursor (Logs tab).
             KeyCode::Char('y') if self.tab == Tab::Logs => {
                 self.select_anchor = Some(self.log_list_state.selected);
                 self.copy_selection();
+            }
+
+            // Copy crash detail or single crash entry (Crash Reports tab).
+            KeyCode::Char('y') if self.tab == Tab::CrashReports => {
+                self.copy_crash_selection();
             }
 
             // Right arrow to open detail, left arrow to close it.

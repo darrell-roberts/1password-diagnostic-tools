@@ -805,6 +805,8 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.viewport.crash_list = inner_height as u16;
     app.crash_list_state.ensure_visible(inner_height);
 
+    let crash_selection_range = app.crash_selection_range();
+
     let items: Vec<ListItem> = app
         .report
         .crash_report_entries
@@ -813,7 +815,9 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .skip(app.crash_list_state.offset)
         .take(inner_height)
         .map(|(idx, crash)| {
-            let is_selected = idx == app.crash_list_state.selected;
+            let is_cursor = idx == app.crash_list_state.selected;
+            let is_in_selection =
+                crash_selection_range.is_some_and(|(start, end)| idx >= start && idx <= end);
 
             let ts = crash
                 .timestamp_utc()
@@ -834,29 +838,63 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
             );
 
             let mut style = Style::default();
-            if is_selected {
+            if is_cursor {
                 style = style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD);
+            } else if is_in_selection {
+                style = style.bg(SELECT_BG);
             }
 
             ListItem::new(Line::from(vec![type_span, ts_span, id_span])).style(style)
         })
         .collect();
 
-    let title = format!(
-        " Crashes [{}/{}] ",
-        if app.report.crash_report_entries.is_empty() {
-            0
-        } else {
-            app.crash_list_state.selected + 1
-        },
-        app.report.crash_report_entries.len(),
-    );
+    let show_copied = app.tab == Tab::CrashReports
+        && app
+            .copied_at
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let title = if show_copied {
+        let count = crash_selection_range.map_or(1, |(s, e)| e - s + 1);
+        format!(" Crashes — Copied {count} entries! ✓ ")
+    } else if let Some((start, end)) = crash_selection_range {
+        let count = end - start + 1;
+        format!(
+            " Crashes [{}/{}] — {} selected (y:copy  Esc:cancel) ",
+            if app.report.crash_report_entries.is_empty() {
+                0
+            } else {
+                app.crash_list_state.selected + 1
+            },
+            app.report.crash_report_entries.len(),
+            count,
+        )
+    } else {
+        format!(
+            " Crashes [{}/{}] ",
+            if app.report.crash_report_entries.is_empty() {
+                0
+            } else {
+                app.crash_list_state.selected + 1
+            },
+            app.report.crash_report_entries.len(),
+        )
+    };
+
+    let title_style = if show_copied {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else if crash_selection_range.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
 
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(title),
+            .title(Span::styled(title, title_style)),
     );
 
     frame.render_widget(list, area);
@@ -869,10 +907,25 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         BORDER_NORMAL
     };
 
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let (detail_title, detail_title_style) = if show_copied {
+        (
+            " Crash Detail — Copied! ✓ ".to_string(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (" Crash Detail ".to_string(), Style::default())
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .title(" Crash Detail ");
+        .title(Span::styled(detail_title, detail_title_style));
 
     // Clone data from crash report and optional panic entry to avoid borrow conflicts.
     let crash_data = app.selected_crash_report().map(|crash| {
@@ -1261,11 +1314,11 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         help_entry("A", "Combine all logs (reset filters)"),
         Line::from(""),
         Line::from(Span::styled(
-            " Selection",
+            " Selection (Logs & Crashes)",
             Style::default().add_modifier(Modifier::BOLD),
         )),
         help_entry("v", "Start visual selection at cursor"),
-        help_entry("y", "Copy selected entries (or current)"),
+        help_entry("y", "Copy selection / current entry / detail"),
         help_entry("Esc", "Cancel selection"),
         Line::from(""),
         Line::from(Span::styled(
