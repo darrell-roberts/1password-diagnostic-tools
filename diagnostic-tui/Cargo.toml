@@ -9,3 +9,4 @@ diagnostic-parser = { path = "../diagnostic-parser" }
 ratatui = "0.30"
 crossterm = "0.29"
 chrono = { workspace = true }
+arboard = "3"

@@ -5,6 +5,7 @@
 //! based on the current [`Tab`].
 
 use crate::app::{App, InputMode, Tab};
+use std::time::Duration;
 
 use diagnostic_parser::log_entry::LogLevel;
 use ratatui::Frame;
@@ -30,6 +31,7 @@ fn level_color(level: LogLevel) -> Color {
 }
 
 const HIGHLIGHT_BG: Color = Color::Rgb(50, 50, 80);
+const SELECT_BG: Color = Color::Rgb(60, 60, 40);
 const BORDER_FOCUSED: Color = Color::Cyan;
 const BORDER_NORMAL: Color = Color::DarkGray;
 const TAB_ACTIVE: Color = Color::Cyan;
@@ -117,6 +119,7 @@ fn draw_tab_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let mode_hint = match app.input_mode {
         InputMode::Search => " SEARCH ",
+        InputMode::Select => " VISUAL ",
         InputMode::Normal => match app.tab {
             Tab::Overview => " OVERVIEW ",
             Tab::Logs if app.show_log_detail => " LOG DETAIL ",
@@ -126,12 +129,22 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         },
     };
 
-    let help_hint = " ?:Help  Tab:Switch  q:Quit ";
+    let help_hint = if app.input_mode == InputMode::Select {
+        " y:Copy  Esc:Cancel  ↑↓:Extend "
+    } else {
+        " ?:Help  Tab:Switch  q:Quit "
+    };
+
+    let mode_bg = if app.input_mode == InputMode::Select {
+        Color::Yellow
+    } else {
+        Color::Cyan
+    };
 
     let left = Span::styled(
         mode_hint,
         Style::default()
-            .bg(Color::Cyan)
+            .bg(mode_bg)
             .fg(Color::Black)
             .add_modifier(Modifier::BOLD),
     );
@@ -409,7 +422,7 @@ fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_search_bar(frame: &mut Frame, app: &App, area: Rect) {
     let (border_color, cursor_visible) = match app.input_mode {
         InputMode::Search => (Color::Yellow, true),
-        InputMode::Normal => (BORDER_NORMAL, false),
+        InputMode::Normal | InputMode::Select => (BORDER_NORMAL, false),
     };
 
     let search_text = if app.search_query.is_empty() && app.input_mode == InputMode::Normal {
@@ -504,6 +517,8 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.viewport.log_list = inner_height as u16;
     app.log_list_state.ensure_visible(inner_height);
 
+    let selection_range = app.selection_range();
+
     let items: Vec<ListItem> = app
         .filtered_indices
         .iter()
@@ -512,7 +527,9 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .take(inner_height)
         .map(|(display_idx, &entry_idx)| {
             let entry = &app.all_entries[entry_idx];
-            let is_selected = display_idx == app.log_list_state.selected;
+            let is_cursor = display_idx == app.log_list_state.selected;
+            let is_in_selection = selection_range
+                .is_some_and(|(start, end)| display_idx >= start && display_idx <= end);
 
             let level_span = Span::styled(
                 format!("{:<5}", entry.level),
@@ -528,8 +545,10 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             let msg_span = Span::styled(msg, Style::default().fg(Color::White));
 
             let mut style = Style::default();
-            if is_selected {
+            if is_cursor {
                 style = style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD);
+            } else if is_in_selection {
+                style = style.bg(SELECT_BG);
             }
 
             let continuation_marker = if entry.has_continuation() {
@@ -548,21 +567,53 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         })
         .collect();
 
-    let title = format!(
-        " Logs [{}/{}] ",
-        if app.filtered_indices.is_empty() {
-            0
-        } else {
-            app.log_list_state.selected + 1
-        },
-        app.filtered_indices.len(),
-    );
+    // Show "Copied!" flash or selection count in the title.
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let title = if show_copied {
+        let count = selection_range.map_or(1, |(s, e)| e - s + 1);
+        format!(" Logs — Copied {count} entries! ✓ ")
+    } else if let Some((start, end)) = selection_range {
+        let count = end - start + 1;
+        format!(
+            " Logs [{}/{}] — {} selected (y:copy  Esc:cancel) ",
+            if app.filtered_indices.is_empty() {
+                0
+            } else {
+                app.log_list_state.selected + 1
+            },
+            app.filtered_indices.len(),
+            count,
+        )
+    } else {
+        format!(
+            " Logs [{}/{}] ",
+            if app.filtered_indices.is_empty() {
+                0
+            } else {
+                app.log_list_state.selected + 1
+            },
+            app.filtered_indices.len(),
+        )
+    };
+
+    let title_style = if show_copied {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else if selection_range.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
 
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(title),
+            .title(Span::styled(title, title_style)),
     );
 
     frame.render_widget(list, area);
@@ -754,6 +805,8 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.viewport.crash_list = inner_height as u16;
     app.crash_list_state.ensure_visible(inner_height);
 
+    let crash_selection_range = app.crash_selection_range();
+
     let items: Vec<ListItem> = app
         .report
         .crash_report_entries
@@ -762,7 +815,9 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .skip(app.crash_list_state.offset)
         .take(inner_height)
         .map(|(idx, crash)| {
-            let is_selected = idx == app.crash_list_state.selected;
+            let is_cursor = idx == app.crash_list_state.selected;
+            let is_in_selection =
+                crash_selection_range.is_some_and(|(start, end)| idx >= start && idx <= end);
 
             let ts = crash
                 .timestamp_utc()
@@ -783,29 +838,63 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
             );
 
             let mut style = Style::default();
-            if is_selected {
+            if is_cursor {
                 style = style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD);
+            } else if is_in_selection {
+                style = style.bg(SELECT_BG);
             }
 
             ListItem::new(Line::from(vec![type_span, ts_span, id_span])).style(style)
         })
         .collect();
 
-    let title = format!(
-        " Crashes [{}/{}] ",
-        if app.report.crash_report_entries.is_empty() {
-            0
-        } else {
-            app.crash_list_state.selected + 1
-        },
-        app.report.crash_report_entries.len(),
-    );
+    let show_copied = app.tab == Tab::CrashReports
+        && app
+            .copied_at
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let title = if show_copied {
+        let count = crash_selection_range.map_or(1, |(s, e)| e - s + 1);
+        format!(" Crashes — Copied {count} entries! ✓ ")
+    } else if let Some((start, end)) = crash_selection_range {
+        let count = end - start + 1;
+        format!(
+            " Crashes [{}/{}] — {} selected (y:copy  Esc:cancel) ",
+            if app.report.crash_report_entries.is_empty() {
+                0
+            } else {
+                app.crash_list_state.selected + 1
+            },
+            app.report.crash_report_entries.len(),
+            count,
+        )
+    } else {
+        format!(
+            " Crashes [{}/{}] ",
+            if app.report.crash_report_entries.is_empty() {
+                0
+            } else {
+                app.crash_list_state.selected + 1
+            },
+            app.report.crash_report_entries.len(),
+        )
+    };
+
+    let title_style = if show_copied {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else if crash_selection_range.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
 
     let list = List::new(items).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(title),
+            .title(Span::styled(title, title_style)),
     );
 
     frame.render_widget(list, area);
@@ -818,10 +907,25 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         BORDER_NORMAL
     };
 
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let (detail_title, detail_title_style) = if show_copied {
+        (
+            " Crash Detail — Copied! ✓ ".to_string(),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else {
+        (" Crash Detail ".to_string(), Style::default())
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .title(" Crash Detail ");
+        .title(Span::styled(detail_title, detail_title_style));
 
     // Clone data from crash report and optional panic entry to avoid borrow conflicts.
     let crash_data = app.selected_crash_report().map(|crash| {
@@ -1169,7 +1273,7 @@ fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
     // Centered popup.
     let popup_width = 60u16.min(area.width.saturating_sub(4));
-    let popup_height = 34u16.min(area.height.saturating_sub(4));
+    let popup_height = 38u16.min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
 
     frame.render_widget(Clear, popup_area);
@@ -1208,6 +1312,14 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         help_entry("l", "Cycle log file filter"),
         help_entry("L", "Open log file picker"),
         help_entry("A", "Combine all logs (reset filters)"),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Selection (Logs & Crashes)",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        help_entry("v", "Start visual selection at cursor"),
+        help_entry("y", "Copy selection / current entry / detail"),
+        help_entry("Esc", "Cancel selection"),
         Line::from(""),
         Line::from(Span::styled(
             " General",
