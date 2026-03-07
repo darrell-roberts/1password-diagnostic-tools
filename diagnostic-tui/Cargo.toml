@@ -1,0 +1,11 @@
+[package]
+name = "diagnostic-tui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+diagnostic-parser = { path = "../diagnostic-parser" }
+ratatui = "0.29"
+crossterm = "0.28"
+chrono = { workspace = true }
