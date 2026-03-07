@@ -1,6 +1,6 @@
 # diagnostic-tools
 
-A Rust workspace for parsing and exploring 1Password `.1pdiagnostics` diagnostic report files.
+A terminal text user interface and parser for exploring 1Password `.1pdiagnostics` diagnostic report files.
 
 ## Crates
 
@@ -32,30 +32,19 @@ https://github.com/user-attachments/assets/4f2cfa4f-da9a-4c67-acd5-2fa5073fa981
 - Mouse scroll support and keyboard navigation.
 
 ### Installation
-1. Clone the repository. 
+1. Clone this repository. 
+```bash
+git clone https://github.com/darrell-roberts/1password-diagnostic-tools.git 
+```
 2. Install the TUI binary.
 
 ```bash
 cargo install --path diagnostic-tui
 ```
 
-## Building
-
-Requires **Rust 1.85+** (edition 2024).
-
-```
-cargo build
-```
-
-To build in release mode:
-
-```
-cargo build --release
-```
+This installs the `diagnostic-tui` binary to your `~/.cargo/bin` directory. Make sure this directory is in your `PATH`.
 
 ## Usage
-
-### CLI summary
 
 ### TUI viewer
 
