@@ -459,6 +459,23 @@ impl App {
     /// Recompute `filtered_indices` based on current search query, level
     /// filter, and source filter.
     pub fn refilter(&mut self) {
+        self.refilter_inner(None);
+    }
+
+    /// Refilter while preserving the currently selected `all_entries` index.
+    /// After the new filtered list is built, the selection is moved to the
+    /// position of the previously selected entry (or the nearest earlier entry
+    /// if it was filtered out).
+    pub fn refilter_preserving_selection(&mut self) {
+        // Resolve the current selection to an all_entries index.
+        let pinned = self
+            .filtered_indices
+            .get(self.log_list_state.selected)
+            .copied();
+        self.refilter_inner(pinned);
+    }
+
+    fn refilter_inner(&mut self, pinned_all_entry_idx: Option<usize>) {
         let query_lower = self.search_query.to_lowercase();
         self.filtered_indices = self
             .all_entries
@@ -474,9 +491,6 @@ impl App {
                     return true;
                 }
                 entry.message.to_lowercase().contains(&query_lower)
-                    || entry.source.raw().to_lowercase().contains(&query_lower)
-                    || entry.thread.to_lowercase().contains(&query_lower)
-                    || entry.log_file_title.to_lowercase().contains(&query_lower)
                     || entry
                         .continuation
                         .iter()
@@ -485,13 +499,26 @@ impl App {
             .map(|(i, _)| i)
             .collect();
 
-        // Clamp selection.
-        if !self.filtered_indices.is_empty() {
-            if self.log_list_state.selected >= self.filtered_indices.len() {
-                self.log_list_state.selected = self.filtered_indices.len() - 1;
+        if let Some(pinned) = pinned_all_entry_idx {
+            // Try to find the exact entry in the new filtered list.
+            // If the pinned entry was filtered out, fall back to the nearest
+            // earlier entry by finding the last filtered index <= pinned.
+            if let Some(pos) = self.filtered_indices.iter().position(|&idx| idx == pinned) {
+                self.log_list_state.selected = pos;
+            } else if let Some(pos) = self.filtered_indices.iter().rposition(|&idx| idx <= pinned) {
+                self.log_list_state.selected = pos;
+            } else {
+                self.log_list_state.selected = 0;
             }
         } else {
-            self.log_list_state.selected = 0;
+            // Clamp selection.
+            if !self.filtered_indices.is_empty() {
+                if self.log_list_state.selected >= self.filtered_indices.len() {
+                    self.log_list_state.selected = self.filtered_indices.len() - 1;
+                }
+            } else {
+                self.log_list_state.selected = 0;
+            }
         }
         self.detail_scroll = 0;
     }
@@ -777,7 +804,7 @@ impl App {
                     self.detail_scroll = 0;
                 } else if !self.search_query.is_empty() {
                     self.search_query.clear();
-                    self.refilter();
+                    self.refilter_preserving_selection();
                 } else {
                     self.detail_focused = false;
                 }
