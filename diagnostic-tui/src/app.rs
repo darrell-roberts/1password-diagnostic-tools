@@ -1,7 +1,7 @@
 //! Application state and input handling for the diagnostic TUI.
 
 use arboard::Clipboard;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use diagnostic_parser::log_entry::{LogEntry, LogLevel};
 use diagnostic_parser::model::{CrashReportEntry, DiagnosticReport};
 use std::time::Instant;
@@ -998,6 +998,8 @@ impl App {
             self.copied_at = None;
         }
 
+        let control_pressed = key.modifiers.contains(KeyModifiers::CONTROL);
+
         match key.code {
             // Quit.
             KeyCode::Char('q') => return true,
@@ -1056,9 +1058,17 @@ impl App {
             }
 
             // Level filter cycle.
-            KeyCode::Char('f') if self.tab == Tab::Logs => {
+            KeyCode::Char('f') if self.tab == Tab::Logs && !control_pressed => {
                 self.level_filter.cycle();
                 self.refilter();
+            }
+
+            KeyCode::Char('f') if control_pressed => {
+                self.navigate_page_down();
+            }
+
+            KeyCode::Char('u') if control_pressed => {
+                self.navigate_page_up();
             }
 
             // Source filter cycle.
