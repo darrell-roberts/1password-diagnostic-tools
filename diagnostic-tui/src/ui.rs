@@ -1272,7 +1272,7 @@ fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
     // Centered popup.
-    let popup_width = 60u16.min(area.width.saturating_sub(4));
+    let popup_width = 65u16.min(area.width.saturating_sub(4));
     let popup_height = 38u16.min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
 
