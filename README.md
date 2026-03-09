@@ -18,7 +18,8 @@ A library (and small demo binary) for parsing `.1pdiagnostics` files. A `.1pdiag
 
 A terminal UI built with [ratatui](https://github.com/ratatui/ratatui) for interactively browsing diagnostic reports.
 
-https://github.com/user-attachments/assets/4f2cfa4f-da9a-4c67-acd5-2fa5073fa981
+https://github.com/user-attachments/assets/60a40a64-214b-42a8-a235-714685136bbc
+
 
 **Features**
 
