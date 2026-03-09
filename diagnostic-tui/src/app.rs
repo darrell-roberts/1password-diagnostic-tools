@@ -56,8 +56,9 @@ impl Tab {
 pub enum InputMode {
     Normal,
     Search,
-    /// Visual selection mode on the Logs tab.
-    /// The anchor index (in `filtered_indices`) is stored in `App::select_anchor`.
+    /// Visual selection mode on the Logs, Crash Reports, or Overview tab.
+    /// The anchor index is stored in `App::select_anchor` (Logs),
+    /// `App::crash_select_anchor` (Crashes), or `App::overview_select_anchor` (Overview).
     Select,
 }
 
@@ -339,6 +340,16 @@ pub struct App {
     /// Overview tab scroll offset.
     pub overview_scroll: u16,
 
+    /// Cursor line index in the overview content (used in visual selection mode).
+    pub overview_cursor: usize,
+
+    /// Anchor line index for visual selection mode on the Overview tab.
+    /// `None` when not in select mode.
+    pub overview_select_anchor: Option<usize>,
+
+    /// Total number of lines in the overview content (set during rendering).
+    pub overview_line_count: usize,
+
     /// Whether the detail pane is focused (for scrolling).
     pub detail_focused: bool,
 
@@ -465,6 +476,9 @@ impl App {
             crash_list_state: ListState::new(),
             crash_detail_scroll: 0,
             overview_scroll: 0,
+            overview_cursor: 0,
+            overview_select_anchor: None,
+            overview_line_count: 0,
             detail_focused: false,
             show_log_detail: false,
             show_help: false,
@@ -587,9 +601,17 @@ impl App {
         match self.input_mode {
             InputMode::Search => self.handle_search_key(key),
             InputMode::Normal => self.handle_normal_key(key),
+            InputMode::Select if self.tab == Tab::Overview => self.handle_overview_select_key(key),
             InputMode::Select if self.tab == Tab::CrashReports => self.handle_crash_select_key(key),
             InputMode::Select => self.handle_select_key(key),
         }
+    }
+
+    /// Returns the ordered (start, end) selection range for the Overview tab if in select mode.
+    pub fn overview_selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.overview_select_anchor?;
+        let cursor = self.overview_cursor;
+        Some((anchor.min(cursor), anchor.max(cursor)))
     }
 
     /// Returns the ordered (start, end) selection range for the Logs tab if in select mode.
@@ -707,6 +729,246 @@ impl App {
         // Exit select mode.
         self.crash_select_anchor = None;
         self.input_mode = InputMode::Normal;
+    }
+
+    /// Handle keys while in visual-select mode on the Overview tab.
+    fn handle_overview_select_key(&mut self, key: KeyEvent) -> bool {
+        match key.code {
+            // Cancel selection.
+            KeyCode::Esc => {
+                self.overview_select_anchor = None;
+                self.input_mode = InputMode::Normal;
+            }
+            // Yank (copy) selection.
+            KeyCode::Char('y') => {
+                self.copy_overview_selection();
+            }
+            // Navigation still works while selecting.
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.overview_cursor > 0 {
+                    self.overview_cursor -= 1;
+                    self.ensure_overview_cursor_visible();
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.overview_line_count > 0
+                    && self.overview_cursor + 1 < self.overview_line_count
+                {
+                    self.overview_cursor += 1;
+                    self.ensure_overview_cursor_visible();
+                }
+            }
+            KeyCode::PageUp => {
+                let page = self.viewport.overview as usize;
+                self.overview_cursor = self.overview_cursor.saturating_sub(page);
+                self.ensure_overview_cursor_visible();
+            }
+            KeyCode::PageDown => {
+                let page = self.viewport.overview as usize;
+                if self.overview_line_count > 0 {
+                    self.overview_cursor =
+                        (self.overview_cursor + page).min(self.overview_line_count - 1);
+                }
+                self.ensure_overview_cursor_visible();
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.overview_cursor = 0;
+                self.ensure_overview_cursor_visible();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                if self.overview_line_count > 0 {
+                    self.overview_cursor = self.overview_line_count - 1;
+                }
+                self.ensure_overview_cursor_visible();
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Ensure the overview cursor line is visible within the current viewport.
+    fn ensure_overview_cursor_visible(&mut self) {
+        let viewport_h = self.viewport.overview as usize;
+        let scroll = self.overview_scroll as usize;
+        if self.overview_cursor < scroll {
+            self.overview_scroll = self.overview_cursor as u16;
+        } else if viewport_h > 0 && self.overview_cursor >= scroll + viewport_h {
+            self.overview_scroll = (self.overview_cursor - viewport_h + 1) as u16;
+        }
+    }
+
+    /// Copy the selected overview lines to the system clipboard.
+    fn copy_overview_selection(&mut self) {
+        let Some((start, end)) = self.overview_selection_range() else {
+            return;
+        };
+
+        let text = self.build_overview_plain_text(start, end);
+
+        if let Some(ref mut cb) = self.clipboard
+            && cb.set_text(text).is_ok()
+        {
+            self.copied_at = Some(Instant::now());
+        }
+
+        // Exit select mode.
+        self.overview_select_anchor = None;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Build plain-text representation of overview lines in the given range.
+    pub fn build_overview_plain_text(&self, start: usize, end: usize) -> String {
+        let lines = self.build_overview_text_lines();
+        lines[start..=end.min(lines.len().saturating_sub(1))]
+            .to_vec()
+            .join("\n")
+    }
+
+    /// Build the overview content as plain-text lines (mirrors the styled lines
+    /// produced by `draw_overview` in `ui.rs`).
+    pub fn build_overview_text_lines(&self) -> Vec<String> {
+        let report = &self.report;
+        let sys = &report.system;
+
+        let created = report
+            .created_at_utc()
+            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .unwrap_or_else(|| format!("{}", report.created_at));
+
+        let mut lines: Vec<String> = Vec::new();
+
+        // Report Information
+        lines.push("Report Information".to_string());
+        lines.push(String::new());
+        lines.push(format!("  UUID: {}", report.uuid));
+        lines.push(format!("  Created: {}", created));
+        lines.push(String::new());
+
+        // System
+        lines.push("System".to_string());
+        lines.push(String::new());
+        lines.push(format!("  Client: {}", sys.client_name));
+        lines.push(format!("  Build: {}", sys.client_build));
+        lines.push(format!("  OS: {} {}", sys.os_name, sys.os_version));
+        lines.push(format!("  Processor: {}", sys.client_processor));
+        lines.push(format!("  Memory: {}", sys.memory));
+        lines.push(format!("  Disk (total): {}", sys.total_space));
+        lines.push(format!("  Disk (free): {}", sys.free_space));
+        lines.push(format!("  Locale: {}", sys.locale));
+        lines.push(format!("  Locked: {}", sys.client_is_locked));
+        if !sys.install_location.is_empty() {
+            lines.push(format!("  Install Path: {}", sys.install_location));
+        }
+        lines.push(String::new());
+
+        // Overview counters
+        lines.push("Overview".to_string());
+        lines.push(String::new());
+        if let Some(ref overview) = report.overview {
+            lines.push(format!("  Accounts: {}", overview.accounts));
+            lines.push(format!("  Vaults: {}", overview.vaults));
+            lines.push(format!("  Active Items: {}", overview.active_items));
+            lines.push(format!("  Inactive Items: {}", overview.inactive_items));
+        } else {
+            lines.push("  (not available for this client)".to_string());
+        }
+        lines.push(String::new());
+
+        // Accounts
+        lines.push("Accounts".to_string());
+        lines.push(String::new());
+
+        for (i, account) in report.accounts.iter().enumerate() {
+            lines.push(format!("  Account {} - {}", i + 1, account.uuid));
+            lines.push(format!("    URL: {}", account.url));
+            lines.push(format!("    Type: {}", account.account_type));
+            let acct_state_str = account
+                .account_state
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            lines.push(format!("    State: {}", acct_state_str));
+            let billing_str = account
+                .billing_status
+                .map(|b| b.to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            lines.push(format!("    Billing: {}", billing_str));
+            lines.push(format!("    Locked: {}", account.account_is_locked));
+            let storage_str = Self::format_bytes_static(account.storage_used);
+            lines.push(format!("    Storage Used: {}", storage_str));
+            lines.push(format!("    Vaults: {}", account.vaults.len()));
+
+            for vault in &account.vaults {
+                lines.push(format!(
+                    "      {} {}  {} active, {} archived, {} deleted",
+                    vault.vault_type,
+                    vault.uuid,
+                    vault.items.active,
+                    vault.items.archived,
+                    vault.items.deleted,
+                ));
+            }
+            lines.push(String::new());
+        }
+
+        // Feature Flags
+        if !sys.features.is_empty() {
+            lines.push("Feature Flags".to_string());
+            lines.push(String::new());
+            for feat in &sys.features {
+                lines.push(format!("  * {}", feat.name));
+            }
+            lines.push(String::new());
+        }
+
+        // Log Files
+        lines.push("Log Files".to_string());
+        lines.push(String::new());
+        lines.push(format!("  Files: {}", report.logs.len()));
+        lines.push(format!("  Total Lines: {}", report.total_log_lines()));
+        lines.push(format!("  Parsed Entries: {}", self.all_entries.len()));
+
+        // Level breakdown
+        let mut by_level = [0usize; 5];
+        for entry in &self.all_entries {
+            let idx = match entry.level {
+                LogLevel::Error => 0,
+                LogLevel::Warn => 1,
+                LogLevel::Info => 2,
+                LogLevel::Debug => 3,
+                LogLevel::Trace => 4,
+            };
+            by_level[idx] += 1;
+        }
+        let level_labels = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
+        for i in 0..5 {
+            if by_level[i] > 0 {
+                lines.push(format!("  {:<5} {}", level_labels[i], by_level[i]));
+            }
+        }
+        lines.push(String::new());
+
+        // Crash Reports
+        lines.push("Crash Reports".to_string());
+        lines.push(String::new());
+        lines.push(format!("  Count: {}", report.crash_report_entries.len()));
+
+        lines
+    }
+
+    fn format_bytes_static(bytes: u64) -> String {
+        const KB: u64 = 1024;
+        const MB: u64 = KB * 1024;
+        const GB: u64 = MB * 1024;
+
+        if bytes >= GB {
+            format!("{:.2} GB", bytes as f64 / GB as f64)
+        } else if bytes >= MB {
+            format!("{:.2} MB", bytes as f64 / MB as f64)
+        } else if bytes >= KB {
+            format!("{:.2} KB", bytes as f64 / KB as f64)
+        } else {
+            format!("{bytes} B")
+        }
     }
 
     /// Handle keys while in visual-select mode.
@@ -1133,6 +1395,12 @@ impl App {
             KeyCode::Home | KeyCode::Char('g') => self.navigate_home(),
             KeyCode::End | KeyCode::Char('G') => self.navigate_end(),
 
+            // Visual select mode (Overview tab).
+            KeyCode::Char('v') if self.tab == Tab::Overview => {
+                self.overview_select_anchor = Some(self.overview_cursor);
+                self.input_mode = InputMode::Select;
+            }
+
             // Visual select mode (Logs tab).
             KeyCode::Char('v') if self.tab == Tab::Logs => {
                 self.select_anchor = Some(self.log_list_state.selected);
@@ -1143,6 +1411,13 @@ impl App {
             KeyCode::Char('v') if self.tab == Tab::CrashReports && !self.detail_focused => {
                 self.crash_select_anchor = Some(self.crash_list_state.selected);
                 self.input_mode = InputMode::Select;
+            }
+
+            // Copy single line under cursor (Overview tab) — copies visible top line.
+            KeyCode::Char('y') if self.tab == Tab::Overview => {
+                self.overview_cursor = self.overview_scroll as usize;
+                self.overview_select_anchor = Some(self.overview_cursor);
+                self.copy_overview_selection();
             }
 
             // Copy single entry under cursor (Logs tab).
@@ -1190,7 +1465,10 @@ impl App {
     fn navigate_up(&mut self) {
         match self.tab {
             Tab::Overview => {
-                self.overview_scroll = self.overview_scroll.saturating_sub(1);
+                if self.overview_cursor > 0 {
+                    self.overview_cursor -= 1;
+                    self.ensure_overview_cursor_visible();
+                }
             }
             Tab::Logs => {
                 self.log_list_state.up();
@@ -1210,7 +1488,12 @@ impl App {
     fn navigate_down(&mut self) {
         match self.tab {
             Tab::Overview => {
-                self.overview_scroll += 1;
+                if self.overview_line_count > 0
+                    && self.overview_cursor + 1 < self.overview_line_count
+                {
+                    self.overview_cursor += 1;
+                    self.ensure_overview_cursor_visible();
+                }
             }
             Tab::Logs => {
                 let max = self.filtered_indices.len();
@@ -1232,8 +1515,9 @@ impl App {
     fn navigate_page_up(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let page = self.viewport.overview;
-                self.overview_scroll = self.overview_scroll.saturating_sub(page);
+                let page = self.viewport.overview as usize;
+                self.overview_cursor = self.overview_cursor.saturating_sub(page);
+                self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
                 let page = self.viewport.log_list as usize;
@@ -1256,8 +1540,12 @@ impl App {
     fn navigate_page_down(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let page = self.viewport.overview;
-                self.overview_scroll += page;
+                let page = self.viewport.overview as usize;
+                if self.overview_line_count > 0 {
+                    self.overview_cursor =
+                        (self.overview_cursor + page).min(self.overview_line_count - 1);
+                }
+                self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
                 let page = self.viewport.log_list as usize;
@@ -1282,7 +1570,8 @@ impl App {
     fn navigate_home(&mut self) {
         match self.tab {
             Tab::Overview => {
-                self.overview_scroll = 0;
+                self.overview_cursor = 0;
+                self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
                 self.log_list_state.home();
@@ -1302,8 +1591,10 @@ impl App {
     fn navigate_end(&mut self) {
         match self.tab {
             Tab::Overview => {
-                // Will be clamped by the renderer.
-                self.overview_scroll = u16::MAX;
+                if self.overview_line_count > 0 {
+                    self.overview_cursor = self.overview_line_count - 1;
+                }
+                self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
                 let max = self.filtered_indices.len();
