@@ -389,6 +389,10 @@ pub struct App {
 
     /// Instant when the last successful copy occurred, used to flash feedback.
     pub copied_at: Option<Instant>,
+
+    /// Whether the previous keypress was `z`, awaiting the second key of a
+    /// two-key `z` command (`zz`, `zt`, `zb`).
+    pub pending_z: bool,
 }
 
 /// Minimal list state tracker (selected index + offset for scrolling).
@@ -491,6 +495,7 @@ impl App {
             crash_select_anchor: None,
             clipboard: Clipboard::new().ok(),
             copied_at: None,
+            pending_z: false,
         }
     }
 
@@ -733,6 +738,18 @@ impl App {
 
     /// Handle keys while in visual-select mode on the Overview tab.
     fn handle_overview_select_key(&mut self, key: KeyEvent) -> bool {
+        // Handle second key of a two-key `z` command.
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => self.scroll_cursor_center(),
+                KeyCode::Char('t') => self.scroll_cursor_top(),
+                KeyCode::Char('b') => self.scroll_cursor_bottom(),
+                _ => {}
+            }
+            return false;
+        }
+
         match key.code {
             // Cancel selection.
             KeyCode::Esc => {
@@ -780,6 +797,10 @@ impl App {
                     self.overview_cursor = self.overview_line_count - 1;
                 }
                 self.ensure_overview_cursor_visible();
+            }
+            // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
             }
             _ => {}
         }
@@ -973,6 +994,18 @@ impl App {
 
     /// Handle keys while in visual-select mode.
     fn handle_select_key(&mut self, key: KeyEvent) -> bool {
+        // Handle second key of a two-key `z` command.
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => self.scroll_cursor_center(),
+                KeyCode::Char('t') => self.scroll_cursor_top(),
+                KeyCode::Char('b') => self.scroll_cursor_bottom(),
+                _ => {}
+            }
+            return false;
+        }
+
         match key.code {
             // Cancel selection.
             KeyCode::Esc => {
@@ -1013,6 +1046,10 @@ impl App {
                 self.log_list_state.end(max);
                 self.detail_scroll = 0;
             }
+            // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
+            }
             _ => {}
         }
         false
@@ -1020,6 +1057,18 @@ impl App {
 
     /// Handle keys while in visual-select mode on the Crash list.
     fn handle_crash_select_key(&mut self, key: KeyEvent) -> bool {
+        // Handle second key of a two-key `z` command.
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => self.scroll_cursor_center(),
+                KeyCode::Char('t') => self.scroll_cursor_top(),
+                KeyCode::Char('b') => self.scroll_cursor_bottom(),
+                _ => {}
+            }
+            return false;
+        }
+
         match key.code {
             // Cancel selection.
             KeyCode::Esc => {
@@ -1059,6 +1108,10 @@ impl App {
                 let max = self.report.crash_report_entries.len();
                 self.crash_list_state.end(max);
                 self.crash_detail_scroll = 0;
+            }
+            // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
             }
             _ => {}
         }
@@ -1264,6 +1317,18 @@ impl App {
             self.copied_at = None;
         }
 
+        // Handle second key of a two-key `z` command.
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => self.scroll_cursor_center(),
+                KeyCode::Char('t') => self.scroll_cursor_top(),
+                KeyCode::Char('b') => self.scroll_cursor_bottom(),
+                _ => {}
+            }
+            return false;
+        }
+
         let control_pressed = key.modifiers.contains(KeyModifiers::CONTROL);
 
         match key.code {
@@ -1391,6 +1456,11 @@ impl App {
                 }
             }
 
+            // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
+            }
+
             // Navigation.
             KeyCode::Up | KeyCode::Char('k') => self.navigate_up(),
             KeyCode::Down | KeyCode::Char('j') => self.navigate_down(),
@@ -1459,6 +1529,72 @@ impl App {
             _ => {}
         }
         false
+    }
+
+    // -----------------------------------------------------------------------
+    // z-commands: scroll the viewport so the cursor line is at the center,
+    // top, or bottom of the visible area — matching vi's zz / zt / zb.
+    // -----------------------------------------------------------------------
+
+    /// Scroll viewport so the current cursor line is centred (`zz`).
+    fn scroll_cursor_center(&mut self) {
+        match self.tab {
+            Tab::Overview => {
+                let half = (self.viewport.overview as usize) / 2;
+                self.overview_scroll = self.overview_cursor.saturating_sub(half) as u16;
+            }
+            Tab::Logs => {
+                let half = (self.viewport.log_list as usize) / 2;
+                self.log_list_state.offset = self.log_list_state.selected.saturating_sub(half);
+            }
+            Tab::CrashReports => {
+                if self.detail_focused {
+                    // No cursor concept in the detail pane — nothing to do.
+                } else {
+                    let half = (self.viewport.crash_list as usize) / 2;
+                    self.crash_list_state.offset =
+                        self.crash_list_state.selected.saturating_sub(half);
+                }
+            }
+        }
+    }
+
+    /// Scroll viewport so the current cursor line is at the top (`zt`).
+    fn scroll_cursor_top(&mut self) {
+        match self.tab {
+            Tab::Overview => {
+                self.overview_scroll = self.overview_cursor as u16;
+            }
+            Tab::Logs => {
+                self.log_list_state.offset = self.log_list_state.selected;
+            }
+            Tab::CrashReports => {
+                if !self.detail_focused {
+                    self.crash_list_state.offset = self.crash_list_state.selected;
+                }
+            }
+        }
+    }
+
+    /// Scroll viewport so the current cursor line is at the bottom (`zb`).
+    fn scroll_cursor_bottom(&mut self) {
+        match self.tab {
+            Tab::Overview => {
+                let h = self.viewport.overview as usize;
+                self.overview_scroll = (self.overview_cursor + 1).saturating_sub(h) as u16;
+            }
+            Tab::Logs => {
+                let h = self.viewport.log_list as usize;
+                self.log_list_state.offset = (self.log_list_state.selected + 1).saturating_sub(h);
+            }
+            Tab::CrashReports => {
+                if !self.detail_focused {
+                    let h = self.viewport.crash_list as usize;
+                    self.crash_list_state.offset =
+                        (self.crash_list_state.selected + 1).saturating_sub(h);
+                }
+            }
+        }
     }
 
     fn tab_nav_keys(&self) -> bool {
