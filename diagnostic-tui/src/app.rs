@@ -1241,6 +1241,10 @@ impl App {
                 self.search_query.pop();
                 self.refilter();
             }
+            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.search_query.clear();
+                self.refilter();
+            }
             KeyCode::Char(c) => {
                 self.search_query.push(c);
                 self.refilter();
