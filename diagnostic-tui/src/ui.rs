@@ -570,7 +570,11 @@ fn level_filter_color(filter: &crate::app::LevelFilter) -> Color {
 }
 
 fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = BORDER_FOCUSED;
+    let border_color = if app.show_log_detail && app.detail_focused {
+        BORDER_NORMAL
+    } else {
+        BORDER_FOCUSED
+    };
 
     let inner_height = area.height.saturating_sub(2) as usize;
     app.viewport.log_list = inner_height as u16;
@@ -679,12 +683,11 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = BORDER_FOCUSED;
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .title(" Detail ");
+    let border_color = if app.detail_focused {
+        BORDER_FOCUSED
+    } else {
+        BORDER_NORMAL
+    };
 
     // Clone entry data to avoid borrow conflicts with app.detail_scroll.
     let entry_data = app.selected_log_entry().map(|entry| {
@@ -701,6 +704,39 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
             entry.continuation.clone(),
         )
     });
+
+    // Build title with selection / copied feedback.
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let detail_sel = app.detail_selection_range();
+
+    let title = if show_copied && app.detail_focused {
+        let count = detail_sel.map_or(1, |(s, e)| e - s + 1);
+        format!(" Detail — Copied {count} lines! ✓ ")
+    } else if let Some((start, end)) = detail_sel {
+        let count = end - start + 1;
+        format!(" Detail — {} selected (y:copy  Esc:cancel) ", count)
+    } else if app.detail_focused {
+        " Detail (focused) ".to_string()
+    } else {
+        " Detail ".to_string()
+    };
+
+    let title_style = if show_copied && app.detail_focused {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else if detail_sel.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(Span::styled(title, title_style));
 
     let Some((
         level,
@@ -722,7 +758,7 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     };
 
-    // Build detail text.
+    // Build detail text as styled Lines, one per logical line.
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(vec![
@@ -808,10 +844,51 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
+    // Track line count so the app can clamp cursor navigation.
+    let total_lines = lines.len();
+    app.detail_line_count = total_lines;
+
+    // Clamp cursor.
+    if total_lines > 0 && app.detail_cursor >= total_lines {
+        app.detail_cursor = total_lines - 1;
+    }
+
+    // Apply cursor / selection highlighting when the detail pane is focused.
+    if app.detail_focused {
+        let selection_range = app.detail_selection_range();
+        for (i, line) in lines.iter_mut().enumerate() {
+            let is_cursor = i == app.detail_cursor;
+            let is_in_selection =
+                selection_range.is_some_and(|(start, end)| i >= start && i <= end);
+
+            if is_cursor {
+                // Patch each span in the line with the highlight background.
+                *line = Line::from(
+                    line.spans
+                        .iter()
+                        .map(|span| {
+                            Span::styled(
+                                span.content.clone(),
+                                span.style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            } else if is_in_selection {
+                *line = Line::from(
+                    line.spans
+                        .iter()
+                        .map(|span| Span::styled(span.content.clone(), span.style.bg(SELECT_BG)))
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+    }
+
     // Clamp scroll.
     let inner_height = area.height.saturating_sub(2) as usize;
     app.viewport.log_detail = inner_height as u16;
-    let max_scroll = lines.len().saturating_sub(inner_height);
+    let max_scroll = total_lines.saturating_sub(inner_height);
     if (app.detail_scroll as usize) > max_scroll {
         app.detail_scroll = max_scroll as u16;
     }
@@ -1332,7 +1409,7 @@ fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
     // Centered popup.
     let popup_width = 65u16.min(area.width.saturating_sub(4));
-    let popup_height = 50u16.min(area.height.saturating_sub(4));
+    let popup_height = 54u16.min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
 
     frame.render_widget(Clear, popup_area);
@@ -1382,6 +1459,15 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         help_entry("v", "Start visual selection at cursor"),
         help_entry("y", "Copy selection / current entry / line"),
         help_entry("Esc", "Cancel selection"),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Log Detail Pane",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        help_entry("Enter/d/Right", "Focus detail pane for navigation"),
+        help_entry("Esc/Left", "Unfocus detail / close detail"),
+        help_entry("v", "Start visual line selection in detail"),
+        help_entry("y", "Copy selected lines / current line"),
         Line::from(""),
         Line::from(Span::styled(
             " Overview Tab",
