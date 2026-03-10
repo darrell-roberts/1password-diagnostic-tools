@@ -129,16 +129,14 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: Rect) {
         },
     };
 
-    let help_hint = if app.input_mode == InputMode::Select {
-        " y:Copy  Esc:Cancel  ↑↓:Extend "
-    } else {
-        " ?:Help  Tab:Switch  q:Quit "
+    let help_hint = match app.input_mode {
+        InputMode::Select => " y:Copy  Esc:Cancel  ↑↓:Extend ",
+        _ => " ?:Help  Tab:Switch  q:Quit ",
     };
 
-    let mode_bg = if app.input_mode == InputMode::Select {
-        Color::Yellow
-    } else {
-        Color::Cyan
+    let mode_bg = match app.input_mode {
+        InputMode::Select => Color::Yellow,
+        _ => Color::Cyan,
     };
 
     let left = Span::styled(
@@ -333,7 +331,7 @@ fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
         by_level[idx] += 1;
     }
     let level_labels = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
-    let level_colors = [
+    let level_colors: [Color; 5] = [
         Color::Red,
         Color::Yellow,
         Color::Green,
@@ -365,10 +363,71 @@ fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
     let crash_count_str = report.crash_report_entries.len().to_string();
     lines.push(kv_line("Count", &crash_count_str));
 
+    // Update the total line count so the app knows bounds for selection.
+    app.overview_line_count = lines.len();
+
+    // Always show cursor highlight on overview; also highlight selection range
+    // when in visual-select mode.
+    let overview_selection = app.overview_selection_range();
+    let in_select = app.input_mode == InputMode::Select && app.tab == Tab::Overview;
+    let cursor = app.overview_cursor;
+    for (i, line) in lines.iter_mut().enumerate() {
+        let is_cursor = i == cursor;
+        let is_in_selection =
+            in_select && overview_selection.is_some_and(|(start, end)| i >= start && i <= end);
+
+        if is_cursor {
+            *line = line.clone().style(
+                Style::default()
+                    .bg(HIGHLIGHT_BG)
+                    .add_modifier(Modifier::BOLD),
+            );
+        } else if is_in_selection {
+            *line = line.clone().style(Style::default().bg(SELECT_BG));
+        }
+    }
+
+    // Show "Copied!" flash or selection count in the title.
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+
+    let title = if show_copied && app.tab == Tab::Overview {
+        let count = overview_selection.map_or(1, |(s, e)| e - s + 1);
+        format!(" Overview — Copied {count} lines! ✓ ")
+    } else if in_select {
+        let (start, end) = overview_selection.unwrap_or((cursor, cursor));
+        let count = end - start + 1;
+        format!(
+            " Overview [{}/{}] — {} selected (y:copy  Esc:cancel) ",
+            app.overview_cursor + 1,
+            app.overview_line_count,
+            count,
+        )
+    } else if app.overview_line_count > 0 {
+        format!(
+            " Overview [{}/{}] ",
+            app.overview_cursor + 1,
+            app.overview_line_count,
+        )
+    } else {
+        " Overview ".to_string()
+    };
+
+    let title_style = if show_copied && app.tab == Tab::Overview {
+        Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD)
+    } else if overview_selection.is_some() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default()
+    };
+
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(BORDER_FOCUSED))
-        .title(" Overview ");
+        .title(Span::styled(title, title_style));
 
     // Clamp scroll.
     let inner_height = area.height.saturating_sub(2) as usize;
@@ -1273,7 +1332,7 @@ fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
     // Centered popup.
     let popup_width = 65u16.min(area.width.saturating_sub(4));
-    let popup_height = 38u16.min(area.height.saturating_sub(4));
+    let popup_height = 46u16.min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
 
     frame.render_widget(Clear, popup_area);
@@ -1318,7 +1377,15 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
             Style::default().add_modifier(Modifier::BOLD),
         )),
         help_entry("v", "Start visual selection at cursor"),
-        help_entry("y", "Copy selection / current entry / detail"),
+        help_entry("y", "Copy selection / current entry / line"),
+        help_entry("Esc", "Cancel selection"),
+        Line::from(""),
+        Line::from(Span::styled(
+            " Overview Tab",
+            Style::default().add_modifier(Modifier::BOLD),
+        )),
+        help_entry("v", "Start visual line selection"),
+        help_entry("y", "Copy selected lines / current line"),
         help_entry("Esc", "Cancel selection"),
         Line::from(""),
         Line::from(Span::styled(
