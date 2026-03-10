@@ -1332,7 +1332,7 @@ fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 fn draw_help_overlay(frame: &mut Frame, area: Rect) {
     // Centered popup.
     let popup_width = 65u16.min(area.width.saturating_sub(4));
-    let popup_height = 46u16.min(area.height.saturating_sub(4));
+    let popup_height = 50u16.min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
 
     frame.render_widget(Clear, popup_area);
@@ -1356,6 +1356,9 @@ fn draw_help_overlay(frame: &mut Frame, area: Rect) {
         help_entry("Home/g  End/G", "Jump to first / last item"),
         help_entry("Enter/d/Right", "Open/focus detail pane"),
         help_entry("Esc/Left", "Close detail / return to list"),
+        help_entry("zz", "Scroll cursor line to center"),
+        help_entry("zt", "Scroll cursor line to top"),
+        help_entry("zb", "Scroll cursor line to bottom"),
         Line::from(""),
         Line::from(Span::styled(
             " Logs Tab",
