@@ -331,6 +331,16 @@ pub struct App {
     /// Vertical scroll offset inside the log detail pane.
     pub detail_scroll: u16,
 
+    /// Cursor line index in the log detail content (used in visual selection mode).
+    pub detail_cursor: usize,
+
+    /// Anchor line index for visual selection mode on the log detail pane.
+    /// `None` when not in select mode.
+    pub detail_select_anchor: Option<usize>,
+
+    /// Total number of lines in the log detail content (set during rendering).
+    pub detail_line_count: usize,
+
     /// Selected crash report index.
     pub crash_list_state: ListState,
 
@@ -383,6 +393,9 @@ pub struct App {
     /// Anchor index (into `crash_report_entries`) for visual selection on the Crash list.
     /// `None` when not in select mode.
     pub crash_select_anchor: Option<usize>,
+
+    /// Whether the detail pane is in select mode (separate from list select mode).
+    pub detail_selecting: bool,
 
     /// System clipboard handle, created once at startup.
     pub clipboard: Option<Clipboard>,
@@ -477,6 +490,10 @@ impl App {
             log_file_filter,
             log_list_state: ListState::new(),
             detail_scroll: 0,
+            detail_cursor: 0,
+            detail_select_anchor: None,
+            detail_line_count: 0,
+            detail_selecting: false,
             crash_list_state: ListState::new(),
             crash_detail_scroll: 0,
             overview_scroll: 0,
@@ -567,6 +584,175 @@ impl App {
     }
 
     /// Get the currently selected log entry (if any).
+    /// Returns the ordered (start, end) selection range for the log detail if in select mode.
+    pub fn detail_selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.detail_select_anchor?;
+        let cursor = self.detail_cursor;
+        Some((anchor.min(cursor), anchor.max(cursor)))
+    }
+
+    /// Build the plain-text lines shown in the log detail pane for the
+    /// currently selected entry. Returns an empty vec when nothing is selected.
+    pub fn build_detail_plain_lines(&self) -> Vec<String> {
+        let Some(entry) = self.selected_log_entry() else {
+            return Vec::new();
+        };
+
+        let mut lines: Vec<String> = Vec::new();
+
+        lines.push(format!("Level:     {}", entry.level.as_str()));
+        lines.push(format!("Timestamp: {}", entry.timestamp));
+
+        if !entry.thread.is_empty() {
+            lines.push(format!("Thread:    {}", entry.thread));
+        }
+
+        lines.push(format!("Source:    {}", entry.source.raw()));
+
+        if let Some(fp) = entry.source.file_path() {
+            lines.push(format!("File:      {}", fp));
+        }
+
+        if let Some(ln) = entry.source.line_number() {
+            lines.push(format!("Line:      {}", ln));
+        }
+
+        lines.push(format!("Log File:  {}", entry.log_file_title));
+
+        lines.push(String::new());
+        lines.push("Message:".to_string());
+        lines.push(String::new());
+
+        for msg_line in entry.message.lines() {
+            lines.push(msg_line.to_string());
+        }
+
+        if entry.has_continuation() {
+            lines.push(String::new());
+            lines.push(format!(
+                "Stack Trace ({} frames):",
+                entry.continuation.len()
+            ));
+            lines.push(String::new());
+
+            for cont_line in &entry.continuation {
+                lines.push(cont_line.clone());
+            }
+        }
+
+        lines
+    }
+
+    /// Ensure the detail cursor line is visible within the current viewport.
+    fn ensure_detail_cursor_visible(&mut self) {
+        let viewport_h = self.viewport.log_detail as usize;
+        let scroll = self.detail_scroll as usize;
+        if self.detail_cursor < scroll {
+            self.detail_scroll = self.detail_cursor as u16;
+        } else if viewport_h > 0 && self.detail_cursor >= scroll + viewport_h {
+            self.detail_scroll = (self.detail_cursor - viewport_h + 1) as u16;
+        }
+    }
+
+    /// Copy the selected detail lines to the system clipboard.
+    fn copy_detail_selection(&mut self) {
+        let Some((start, end)) = self.detail_selection_range() else {
+            return;
+        };
+
+        let lines = self.build_detail_plain_lines();
+        let text: String = lines[start..=end.min(lines.len().saturating_sub(1))].join("\n");
+
+        if let Some(ref mut cb) = self.clipboard
+            && cb.set_text(text).is_ok()
+        {
+            self.copied_at = Some(Instant::now());
+        }
+
+        // Exit detail select mode.
+        self.detail_select_anchor = None;
+        self.detail_selecting = false;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Handle keys while in visual-select mode inside the log detail pane.
+    fn handle_detail_select_key(&mut self, key: KeyEvent) -> bool {
+        // Handle second key of a two-key `z` command.
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => {
+                    let half = (self.viewport.log_detail as usize) / 2;
+                    self.detail_scroll = self.detail_cursor.saturating_sub(half) as u16;
+                }
+                KeyCode::Char('t') => {
+                    self.detail_scroll = self.detail_cursor as u16;
+                }
+                KeyCode::Char('b') => {
+                    let h = self.viewport.log_detail as usize;
+                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(h) as u16;
+                }
+                _ => {}
+            }
+            return false;
+        }
+
+        match key.code {
+            // Cancel selection.
+            KeyCode::Esc => {
+                self.detail_select_anchor = None;
+                self.detail_selecting = false;
+                self.input_mode = InputMode::Normal;
+            }
+            // Yank (copy) selection.
+            KeyCode::Char('y') => {
+                self.copy_detail_selection();
+            }
+            // Navigation still works while selecting.
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.detail_cursor > 0 {
+                    self.detail_cursor -= 1;
+                    self.ensure_detail_cursor_visible();
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.detail_line_count > 0 && self.detail_cursor + 1 < self.detail_line_count {
+                    self.detail_cursor += 1;
+                    self.ensure_detail_cursor_visible();
+                }
+            }
+            KeyCode::PageUp => {
+                let page = self.viewport.log_detail as usize;
+                self.detail_cursor = self.detail_cursor.saturating_sub(page);
+                self.ensure_detail_cursor_visible();
+            }
+            KeyCode::PageDown => {
+                let page = self.viewport.log_detail as usize;
+                if self.detail_line_count > 0 {
+                    self.detail_cursor =
+                        (self.detail_cursor + page).min(self.detail_line_count - 1);
+                }
+                self.ensure_detail_cursor_visible();
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.detail_cursor = 0;
+                self.ensure_detail_cursor_visible();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                if self.detail_line_count > 0 {
+                    self.detail_cursor = self.detail_line_count - 1;
+                }
+                self.ensure_detail_cursor_visible();
+            }
+            // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
+            }
+            _ => {}
+        }
+        false
+    }
+
     pub fn selected_log_entry(&self) -> Option<&LogEntry> {
         let idx = *self.filtered_indices.get(self.log_list_state.selected)?;
         self.all_entries.get(idx)
@@ -608,6 +794,7 @@ impl App {
             InputMode::Normal => self.handle_normal_key(key),
             InputMode::Select if self.tab == Tab::Overview => self.handle_overview_select_key(key),
             InputMode::Select if self.tab == Tab::CrashReports => self.handle_crash_select_key(key),
+            InputMode::Select if self.detail_selecting => self.handle_detail_select_key(key),
             InputMode::Select => self.handle_select_key(key),
         }
     }
@@ -1377,7 +1564,9 @@ impl App {
 
             // Clear search / close log detail / unfocus detail.
             KeyCode::Esc => {
-                if self.tab == Tab::Logs && self.show_log_detail {
+                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused {
+                    self.detail_focused = false;
+                } else if self.tab == Tab::Logs && self.show_log_detail {
                     self.show_log_detail = false;
                     self.detail_scroll = 0;
                 } else if !self.search_query.is_empty() {
@@ -1448,8 +1637,21 @@ impl App {
             // Toggle detail view.
             KeyCode::Char('d') | KeyCode::Enter => {
                 if self.tab == Tab::Logs {
-                    self.show_log_detail = !self.show_log_detail;
-                    self.detail_scroll = 0;
+                    if self.show_log_detail && self.detail_focused {
+                        // Unfocus detail when pressing d/Enter while detail is focused.
+                        self.detail_focused = false;
+                    } else if self.show_log_detail && !self.detail_focused {
+                        // Focus detail when pressing d/Enter while detail is visible but not focused.
+                        self.detail_focused = true;
+                        self.detail_cursor = 0;
+                        self.detail_scroll = 0;
+                    } else {
+                        // Open detail and focus it.
+                        self.show_log_detail = true;
+                        self.detail_focused = true;
+                        self.detail_cursor = 0;
+                        self.detail_scroll = 0;
+                    }
                 } else if self.tab == Tab::CrashReports {
                     self.detail_focused = !self.detail_focused;
                     self.crash_detail_scroll = 0;
@@ -1475,7 +1677,16 @@ impl App {
                 self.input_mode = InputMode::Select;
             }
 
-            // Visual select mode (Logs tab).
+            // Visual select mode (Logs tab — detail pane focused).
+            KeyCode::Char('v')
+                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused =>
+            {
+                self.detail_select_anchor = Some(self.detail_cursor);
+                self.detail_selecting = true;
+                self.input_mode = InputMode::Select;
+            }
+
+            // Visual select mode (Logs tab — list focused).
             KeyCode::Char('v') if self.tab == Tab::Logs => {
                 self.select_anchor = Some(self.log_list_state.selected);
                 self.input_mode = InputMode::Select;
@@ -1494,7 +1705,16 @@ impl App {
                 self.copy_overview_selection();
             }
 
-            // Copy single entry under cursor (Logs tab).
+            // Copy single line under cursor (Logs tab — detail pane focused).
+            KeyCode::Char('y')
+                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused =>
+            {
+                self.detail_select_anchor = Some(self.detail_cursor);
+                self.detail_selecting = true;
+                self.copy_detail_selection();
+            }
+
+            // Copy single entry under cursor (Logs tab — list focused).
             KeyCode::Char('y') if self.tab == Tab::Logs => {
                 self.select_anchor = Some(self.log_list_state.selected);
                 self.copy_selection();
@@ -1505,10 +1725,16 @@ impl App {
                 self.copy_crash_selection();
             }
 
-            // Right arrow to open detail, left arrow to close it.
+            // Right arrow to open/focus detail, left arrow to close/unfocus it.
             KeyCode::Right if self.tab == Tab::Logs => {
                 if !self.show_log_detail {
                     self.show_log_detail = true;
+                    self.detail_focused = true;
+                    self.detail_cursor = 0;
+                    self.detail_scroll = 0;
+                } else if !self.detail_focused {
+                    self.detail_focused = true;
+                    self.detail_cursor = 0;
                     self.detail_scroll = 0;
                 }
             }
@@ -1517,7 +1743,9 @@ impl App {
                 self.crash_detail_scroll = 0;
             }
             KeyCode::Left if self.tab == Tab::Logs => {
-                if self.show_log_detail {
+                if self.show_log_detail && self.detail_focused {
+                    self.detail_focused = false;
+                } else if self.show_log_detail {
                     self.show_log_detail = false;
                     self.detail_scroll = 0;
                 }
@@ -1544,8 +1772,13 @@ impl App {
                 self.overview_scroll = self.overview_cursor.saturating_sub(half) as u16;
             }
             Tab::Logs => {
-                let half = (self.viewport.log_list as usize) / 2;
-                self.log_list_state.offset = self.log_list_state.selected.saturating_sub(half);
+                if self.show_log_detail && self.detail_focused {
+                    let half = (self.viewport.log_detail as usize) / 2;
+                    self.detail_scroll = self.detail_cursor.saturating_sub(half) as u16;
+                } else {
+                    let half = (self.viewport.log_list as usize) / 2;
+                    self.log_list_state.offset = self.log_list_state.selected.saturating_sub(half);
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1566,7 +1799,11 @@ impl App {
                 self.overview_scroll = self.overview_cursor as u16;
             }
             Tab::Logs => {
-                self.log_list_state.offset = self.log_list_state.selected;
+                if self.show_log_detail && self.detail_focused {
+                    self.detail_scroll = self.detail_cursor as u16;
+                } else {
+                    self.log_list_state.offset = self.log_list_state.selected;
+                }
             }
             Tab::CrashReports => {
                 if !self.detail_focused {
@@ -1584,8 +1821,14 @@ impl App {
                 self.overview_scroll = (self.overview_cursor + 1).saturating_sub(h) as u16;
             }
             Tab::Logs => {
-                let h = self.viewport.log_list as usize;
-                self.log_list_state.offset = (self.log_list_state.selected + 1).saturating_sub(h);
+                if self.show_log_detail && self.detail_focused {
+                    let h = self.viewport.log_detail as usize;
+                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(h) as u16;
+                } else {
+                    let h = self.viewport.log_list as usize;
+                    self.log_list_state.offset =
+                        (self.log_list_state.selected + 1).saturating_sub(h);
+                }
             }
             Tab::CrashReports => {
                 if !self.detail_focused {
@@ -1611,8 +1854,16 @@ impl App {
                 }
             }
             Tab::Logs => {
-                self.log_list_state.up();
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    if self.detail_cursor > 0 {
+                        self.detail_cursor -= 1;
+                        self.ensure_detail_cursor_visible();
+                    }
+                } else {
+                    self.log_list_state.up();
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1636,9 +1887,18 @@ impl App {
                 }
             }
             Tab::Logs => {
-                let max = self.filtered_indices.len();
-                self.log_list_state.down(max);
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    if self.detail_line_count > 0 && self.detail_cursor + 1 < self.detail_line_count
+                    {
+                        self.detail_cursor += 1;
+                        self.ensure_detail_cursor_visible();
+                    }
+                } else {
+                    let max = self.filtered_indices.len();
+                    self.log_list_state.down(max);
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1660,9 +1920,16 @@ impl App {
                 self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
-                let page = self.viewport.log_list as usize;
-                self.log_list_state.page_up(page);
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    let page = self.viewport.log_detail as usize;
+                    self.detail_cursor = self.detail_cursor.saturating_sub(page);
+                    self.ensure_detail_cursor_visible();
+                } else {
+                    let page = self.viewport.log_list as usize;
+                    self.log_list_state.page_up(page);
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1688,10 +1955,20 @@ impl App {
                 self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
-                let page = self.viewport.log_list as usize;
-                let max = self.filtered_indices.len();
-                self.log_list_state.page_down(page, max);
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    let page = self.viewport.log_detail as usize;
+                    if self.detail_line_count > 0 {
+                        self.detail_cursor =
+                            (self.detail_cursor + page).min(self.detail_line_count - 1);
+                    }
+                    self.ensure_detail_cursor_visible();
+                } else {
+                    let page = self.viewport.log_list as usize;
+                    let max = self.filtered_indices.len();
+                    self.log_list_state.page_down(page, max);
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1714,8 +1991,14 @@ impl App {
                 self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
-                self.log_list_state.home();
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    self.detail_cursor = 0;
+                    self.ensure_detail_cursor_visible();
+                } else {
+                    self.log_list_state.home();
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
@@ -1737,9 +2020,17 @@ impl App {
                 self.ensure_overview_cursor_visible();
             }
             Tab::Logs => {
-                let max = self.filtered_indices.len();
-                self.log_list_state.end(max);
-                self.detail_scroll = 0;
+                if self.show_log_detail && self.detail_focused {
+                    if self.detail_line_count > 0 {
+                        self.detail_cursor = self.detail_line_count - 1;
+                    }
+                    self.ensure_detail_cursor_visible();
+                } else {
+                    let max = self.filtered_indices.len();
+                    self.log_list_state.end(max);
+                    self.detail_scroll = 0;
+                    self.detail_cursor = 0;
+                }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
