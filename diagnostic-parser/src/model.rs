@@ -19,6 +19,7 @@ use std::str::FromStr;
 use chrono::{DateTime, TimeZone, Utc};
 use serde::de;
 use serde::{Deserialize, Deserializer, Serialize};
+use serde_json::Value;
 
 /// Deserialize a Unix timestamp that may be either an integer or a
 /// floating-point number, truncating any fractional seconds to produce an `i64`.
@@ -228,9 +229,38 @@ pub struct System {
 }
 
 /// A named feature flag.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Feature {
     pub name: String,
+}
+
+// The Feature block can be { "feature"} or { "name": "feature" }
+impl<'de> Deserialize<'de> for Feature {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = Value::deserialize(deserializer)?;
+
+        Ok(match &value {
+            // Case 1: { "name": "value" }
+            Value::Object(map) => {
+                let name = map
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| de::Error::missing_field("name"))?
+                    .to_string();
+                Feature { name }
+            }
+            // Case 2: "value"
+            Value::String(s) => Feature { name: s.clone() },
+            _ => {
+                return Err(de::Error::custom(
+                    "expected a string or object with 'name' field",
+                ));
+            }
+        })
+    }
 }
 
 impl fmt::Display for Feature {
