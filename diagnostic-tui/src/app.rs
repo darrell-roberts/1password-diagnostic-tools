@@ -191,21 +191,7 @@ impl App {
         self.refilter_inner(None);
     }
 
-    /// Refilter while preserving the currently selected `all_entries` index.
-    /// After the new filtered list is built, the selection is moved to the
-    /// position of the previously selected entry (or the nearest earlier entry
-    /// if it was filtered out).
-    pub fn refilter_preserving_selection(&mut self) {
-        // Resolve the current selection to an all_entries index.
-        let pinned = self
-            .filtered_indices
-            .get(self.log_list_state.selected)
-            .copied();
-        self.refilter_inner(pinned);
-    }
-
     fn refilter_inner(&mut self, pinned_all_entry_idx: Option<usize>) {
-        let query_lower = self.search_query.to_lowercase();
         self.filtered_indices = self
             .all_entries
             .iter()
@@ -214,16 +200,6 @@ impl App {
                 self.level_filter.accepts(entry.level)
                     && self.source_filter.accepts(entry)
                     && self.log_file_filter.accepts(entry)
-            })
-            .filter(|(_, entry)| {
-                if query_lower.is_empty() {
-                    return true;
-                }
-                entry.message.to_lowercase().contains(&query_lower)
-                    || entry
-                        .continuation
-                        .iter()
-                        .any(|c| c.to_lowercase().contains(&query_lower))
             })
             .map(|(i, _)| i)
             .collect();
@@ -250,6 +226,80 @@ impl App {
             }
         }
         self.detail_scroll = 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Search navigation
+    // -----------------------------------------------------------------------
+
+    /// Returns `true` if the entry at `all_entries[idx]` matches the current
+    /// search query (case-insensitive substring in message or continuation).
+    fn entry_matches_query(&self, idx: usize, query_lower: &str) -> bool {
+        if query_lower.is_empty() {
+            return false;
+        }
+        let entry = &self.all_entries[idx];
+        entry.message.to_lowercase().contains(query_lower)
+            || entry
+                .continuation
+                .iter()
+                .any(|c| c.to_lowercase().contains(query_lower))
+    }
+
+    /// Move the cursor forward to the next entry matching the search query.
+    /// Wraps around to the beginning if no match is found after the cursor.
+    pub fn find_next(&mut self) {
+        if self.search_query.is_empty() || self.filtered_indices.is_empty() {
+            return;
+        }
+        let query_lower = self.search_query.to_lowercase();
+        let len = self.filtered_indices.len();
+        // Search from current+1, wrapping around.
+        for offset in 1..=len {
+            let pos = (self.log_list_state.selected + offset) % len;
+            if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
+                self.log_list_state.selected = pos;
+                self.detail_scroll = 0;
+                return;
+            }
+        }
+    }
+
+    /// Move the cursor backward to the previous entry matching the search query.
+    /// Wraps around to the end if no match is found before the cursor.
+    pub fn find_prev(&mut self) {
+        if self.search_query.is_empty() || self.filtered_indices.is_empty() {
+            return;
+        }
+        let query_lower = self.search_query.to_lowercase();
+        let len = self.filtered_indices.len();
+        for offset in 1..=len {
+            let pos = (self.log_list_state.selected + len - offset) % len;
+            if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
+                self.log_list_state.selected = pos;
+                self.detail_scroll = 0;
+                return;
+            }
+        }
+    }
+
+    /// Move the cursor to the nearest matching entry at or after the current
+    /// position. Used for live search-as-you-type.
+    pub fn find_nearest(&mut self) {
+        if self.search_query.is_empty() || self.filtered_indices.is_empty() {
+            return;
+        }
+        let query_lower = self.search_query.to_lowercase();
+        let len = self.filtered_indices.len();
+        // First try from current position forward.
+        for offset in 0..len {
+            let pos = (self.log_list_state.selected + offset) % len;
+            if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
+                self.log_list_state.selected = pos;
+                self.detail_scroll = 0;
+                return;
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
