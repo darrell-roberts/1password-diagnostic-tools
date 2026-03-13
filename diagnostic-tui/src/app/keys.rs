@@ -13,6 +13,7 @@ impl App {
     pub(super) fn handle_search_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Esc => {
+                self.search_query.clear();
                 self.input_mode = InputMode::Normal;
             }
             KeyCode::Enter => {
@@ -20,15 +21,14 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.search_query.pop();
-                self.refilter();
+                self.find_nearest();
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.search_query.clear();
-                self.refilter();
             }
             KeyCode::Char(c) => {
                 self.search_query.push(c);
-                self.refilter();
+                self.find_nearest();
             }
             _ => {}
         }
@@ -112,10 +112,17 @@ impl App {
                     self.detail_scroll = 0;
                 } else if !self.search_query.is_empty() {
                     self.search_query.clear();
-                    self.refilter_preserving_selection();
                 } else {
                     self.detail_focused = false;
                 }
+            }
+
+            // Find next / previous match.
+            KeyCode::Char('n') if self.tab == Tab::Logs && !self.search_query.is_empty() => {
+                self.find_next();
+            }
+            KeyCode::Char('N') if self.tab == Tab::Logs && !self.search_query.is_empty() => {
+                self.find_prev();
             }
 
             // Level filter cycle.

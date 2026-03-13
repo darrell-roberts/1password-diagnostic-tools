@@ -67,11 +67,17 @@ fn draw_search_bar(frame: &mut Frame, app: &App, area: Rect) {
         Style::default().fg(Color::White)
     };
 
+    let title = if !app.search_query.is_empty() && app.input_mode == InputMode::Normal {
+        " Search (n:next  N:prev  Esc:clear) "
+    } else {
+        " Search "
+    };
+
     let input = Paragraph::new(search_text.as_str()).style(style).block(
         Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(" Search "),
+            .title(title),
     );
 
     frame.render_widget(input, area);
@@ -146,6 +152,11 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
     app.log_list_state.ensure_visible(inner_height);
 
     let selection_range = app.selection_range();
+    let query_lower = app.search_query.to_lowercase();
+    let highlight_style = Style::default()
+        .fg(Color::Black)
+        .bg(Color::Yellow)
+        .add_modifier(Modifier::BOLD);
 
     let items: Vec<ListItem> = app
         .filtered_indices
@@ -170,7 +181,18 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             // Truncate message to fit.
             let avail = (area.width as usize).saturating_sub(18);
             let msg = truncate_str(&entry.message, avail);
-            let msg_span = Span::styled(msg, Style::default().fg(Color::White));
+
+            // Build message spans with search highlighting.
+            let msg_spans = if !query_lower.is_empty() {
+                highlight_matches(
+                    &msg,
+                    &query_lower,
+                    Style::default().fg(Color::White),
+                    highlight_style,
+                )
+            } else {
+                vec![Span::styled(msg, Style::default().fg(Color::White))]
+            };
 
             let mut style = Style::default();
             if is_cursor {
@@ -185,13 +207,11 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
                 Span::raw("")
             };
 
-            ListItem::new(Line::from(vec![
-                level_span,
-                ts_span,
-                msg_span,
-                continuation_marker,
-            ]))
-            .style(style)
+            let mut spans = vec![level_span, ts_span];
+            spans.extend(msg_spans);
+            spans.push(continuation_marker);
+
+            ListItem::new(Line::from(spans)).style(style)
         })
         .collect();
 
@@ -468,4 +488,46 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         .scroll((app.detail_scroll, 0));
 
     frame.render_widget(paragraph, area);
+}
+
+// ---------------------------------------------------------------------------
+// Search highlighting
+// ---------------------------------------------------------------------------
+
+/// Split `text` into spans, highlighting case-insensitive occurrences of
+/// `query_lower` with `match_style` and rendering the rest with `base_style`.
+fn highlight_matches(
+    text: &str,
+    query_lower: &str,
+    base_style: Style,
+    match_style: Style,
+) -> Vec<Span<'static>> {
+    let text_lower = text.to_lowercase();
+    let mut spans = Vec::new();
+    let mut start = 0;
+
+    while let Some(pos) = text_lower[start..].find(query_lower) {
+        let match_start = start + pos;
+        let match_end = match_start + query_lower.len();
+
+        if match_start > start {
+            spans.push(Span::styled(
+                text[start..match_start].to_string(),
+                base_style,
+            ));
+        }
+        spans.push(Span::styled(
+            text[match_start..match_end].to_string(),
+            match_style,
+        ));
+        start = match_end;
+    }
+
+    if start < text.len() {
+        spans.push(Span::styled(text[start..].to_string(), base_style));
+    } else if spans.is_empty() {
+        spans.push(Span::styled(text.to_string(), base_style));
+    }
+
+    spans
 }
