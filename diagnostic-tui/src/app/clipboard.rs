@@ -7,6 +7,7 @@
 
 use super::App;
 use crate::app::state::InputMode;
+use chrono::Local;
 use diagnostic_parser::log_entry::LogLevel;
 use diagnostic_parser::model::CrashReportEntry;
 use std::time::Instant;
@@ -60,7 +61,7 @@ impl App {
             .map(|entry| {
                 let mut line = format!(
                     "{} {} [{}] {}",
-                    entry.timestamp,
+                    entry.timestamp.with_timezone(&Local),
                     entry.level,
                     entry.source.raw(),
                     entry.message,
@@ -120,7 +121,10 @@ impl App {
         let mut lines: Vec<String> = Vec::new();
 
         lines.push(format!("Level:     {}", entry.level.as_str()));
-        lines.push(format!("Timestamp: {}", entry.timestamp));
+        lines.push(format!(
+            "Timestamp: {}",
+            entry.timestamp.with_timezone(&Local)
+        ));
 
         if !entry.thread.is_empty() {
             lines.push(format!("Thread:    {}", entry.thread));
@@ -170,7 +174,11 @@ impl App {
     fn format_crash_text(&self, crash: &CrashReportEntry) -> String {
         let ts = crash
             .timestamp_utc()
-            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .map(|d| {
+                d.with_timezone(&Local)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
             .unwrap_or_else(|| format!("{}", crash.timestamp));
 
         let mut text = format!(
@@ -184,7 +192,7 @@ impl App {
                 entry.log_file_title,
                 entry.thread,
                 entry.source.raw(),
-                entry.timestamp,
+                entry.timestamp.with_timezone(&Local),
                 entry.message,
             ));
             if entry.has_continuation() {
