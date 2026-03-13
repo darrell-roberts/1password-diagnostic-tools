@@ -6,6 +6,7 @@ use crate::ui::helpers::{
     BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, level_color, level_filter_color,
     truncate_str,
 };
+use chrono::Local;
 use std::time::Duration;
 
 use ratatui::Frame;
@@ -163,7 +164,7 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
                 Style::default().fg(level_color(entry.level)),
             );
 
-            let ts = entry.timestamp.format("%H:%M:%S%.3f");
+            let ts = entry.timestamp.with_timezone(&Local).format("%H:%M:%S%.3f");
             let ts_span = Span::styled(format!(" {ts} "), Style::default().fg(Color::DarkGray));
 
             // Truncate message to fit.
@@ -261,7 +262,7 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let entry_data = app.selected_log_entry().map(|entry| {
         (
             entry.level,
-            entry.timestamp.to_string(),
+            entry.timestamp.with_timezone(&Local).to_string(),
             entry.thread.clone(),
             entry.source.raw(),
             entry.source.file_path().map(|s| s.to_owned()),

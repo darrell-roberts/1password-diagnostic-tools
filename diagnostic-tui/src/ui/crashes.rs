@@ -2,6 +2,7 @@
 
 use crate::app::{App, Tab};
 use crate::ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, truncate_str};
+use chrono::Local;
 use std::time::Duration;
 
 use ratatui::Frame;
@@ -67,7 +68,11 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
             let ts = crash
                 .timestamp_utc()
-                .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+                .map(|d| {
+                    d.with_timezone(&Local)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                })
                 .unwrap_or_else(|| format!("{}", crash.timestamp));
 
             let type_span = Span::styled(
@@ -181,7 +186,11 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let crash_data = app.selected_crash_report().map(|crash| {
         let ts = crash
             .timestamp_utc()
-            .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
+            .map(|d| {
+                d.with_timezone(&Local)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
             .unwrap_or_else(|| format!("{}", crash.timestamp));
         (
             crash.report_id.clone(),
@@ -196,7 +205,7 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
             entry.log_file_title.clone(),
             entry.thread.clone(),
             entry.source.raw(),
-            entry.timestamp.to_string(),
+            entry.timestamp.with_timezone(&Local).to_string(),
             entry.message.clone(),
             entry.has_continuation(),
             entry.continuation.clone(),
