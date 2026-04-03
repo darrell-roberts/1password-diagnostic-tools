@@ -16,7 +16,8 @@ pub mod state;
 
 // Re-export the most commonly used types so callers can write `app::App`, etc.
 pub use filters::{LevelFilter, LogFileFilter, SourceFilter};
-pub use state::{InputMode, ListState, Tab, ViewportHeights};
+use ratatui::widgets::TableState;
+pub use state::{InputMode, Tab, ViewportHeights};
 
 use arboard::Clipboard;
 use crossterm::event::KeyEvent;
@@ -54,7 +55,7 @@ pub struct App {
     pub log_file_filter: LogFileFilter,
 
     /// Selected row in the log list.
-    pub log_list_state: ListState,
+    pub log_list_state: TableState,
 
     /// Vertical scroll offset inside the log detail pane.
     pub detail_scroll: u16,
@@ -70,7 +71,7 @@ pub struct App {
     pub detail_line_count: usize,
 
     /// Selected crash report index.
-    pub crash_list_state: ListState,
+    pub crash_list_state: TableState,
 
     /// Vertical scroll offset inside the crash detail pane.
     pub crash_detail_scroll: u16,
@@ -143,6 +144,8 @@ impl App {
         let log_file_filter = LogFileFilter::new(&all_entries);
         let filtered_indices: Vec<usize> = (0..all_entries.len()).collect();
 
+        let selected_crash_report = (!report.crash_report_entries.is_empty()).then_some(0);
+
         Self {
             report,
             all_entries,
@@ -153,13 +156,13 @@ impl App {
             level_filter: LevelFilter::default(),
             source_filter,
             log_file_filter,
-            log_list_state: ListState::new(),
+            log_list_state: TableState::new().with_selected(0),
             detail_scroll: 0,
             detail_cursor: 0,
             detail_select_anchor: None,
             detail_line_count: 0,
             detail_selecting: false,
-            crash_list_state: ListState::new(),
+            crash_list_state: TableState::new().with_selected(selected_crash_report),
             crash_detail_scroll: 0,
             overview_scroll: 0,
             overview_cursor: 0,
@@ -208,21 +211,20 @@ impl App {
             // Try to find the exact entry in the new filtered list.
             // If the pinned entry was filtered out, fall back to the nearest
             // earlier entry by finding the last filtered index <= pinned.
-            if let Some(pos) = self.filtered_indices.iter().position(|&idx| idx == pinned) {
-                self.log_list_state.selected = pos;
-            } else if let Some(pos) = self.filtered_indices.iter().rposition(|&idx| idx <= pinned) {
-                self.log_list_state.selected = pos;
-            } else {
-                self.log_list_state.selected = 0;
-            }
+            self.log_list_state
+                .select(self.filtered_indices.iter().position(|&idx| idx == pinned));
         } else {
+            let Some(selected) = self.log_list_state.selected() else {
+                return;
+            };
             // Clamp selection.
             if !self.filtered_indices.is_empty() {
-                if self.log_list_state.selected >= self.filtered_indices.len() {
-                    self.log_list_state.selected = self.filtered_indices.len() - 1;
+                if selected >= self.filtered_indices.len() {
+                    self.log_list_state
+                        .select(Some(self.filtered_indices.len() - 1));
                 }
             } else {
-                self.log_list_state.selected = 0;
+                self.log_list_state.select(Some(0))
             }
         }
         self.detail_scroll = 0;
@@ -252,13 +254,18 @@ impl App {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
         }
+
+        let Some(selected) = self.log_list_state.selected() else {
+            return;
+        };
+
         let query_lower = self.search_query.to_lowercase();
         let len = self.filtered_indices.len();
         // Search from current+1, wrapping around.
         for offset in 1..=len {
-            let pos = (self.log_list_state.selected + offset) % len;
+            let pos = (selected + offset) % len;
             if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
-                self.log_list_state.selected = pos;
+                self.log_list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
             }
@@ -271,12 +278,17 @@ impl App {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
         }
+
+        let Some(selected) = self.log_list_state.selected() else {
+            return;
+        };
+
         let query_lower = self.search_query.to_lowercase();
         let len = self.filtered_indices.len();
         for offset in 1..=len {
-            let pos = (self.log_list_state.selected + len - offset) % len;
+            let pos = (selected + len - offset) % len;
             if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
-                self.log_list_state.selected = pos;
+                self.log_list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
             }
@@ -291,11 +303,14 @@ impl App {
         }
         let query_lower = self.search_query.to_lowercase();
         let len = self.filtered_indices.len();
+        let Some(selected) = self.log_list_state.selected() else {
+            return;
+        };
         // First try from current position forward.
         for offset in 0..len {
-            let pos = (self.log_list_state.selected + offset) % len;
+            let pos = (selected + offset) % len;
             if self.entry_matches_query(self.filtered_indices[pos], &query_lower) {
-                self.log_list_state.selected = pos;
+                self.log_list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
             }
@@ -308,15 +323,15 @@ impl App {
 
     /// Get the currently selected log entry (if any).
     pub fn selected_log_entry(&self) -> Option<&LogEntry> {
-        let idx = *self.filtered_indices.get(self.log_list_state.selected)?;
-        self.all_entries.get(idx)
+        let selected = self.log_list_state.selected()?;
+        // let idx = *self.filtered_indices.get(self.log_list_state.selected)?;
+        self.all_entries.get(selected)
     }
 
     /// Get the currently selected crash report (if any).
     pub fn selected_crash_report(&self) -> Option<&CrashReportEntry> {
-        self.report
-            .crash_report_entries
-            .get(self.crash_list_state.selected)
+        let selected = self.crash_list_state.selected()?;
+        self.report.crash_report_entries.get(selected)
     }
 
     /// Find the panic log entry that corresponds to the selected crash report.

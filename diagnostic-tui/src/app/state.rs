@@ -4,6 +4,8 @@
 // Active tab / panel
 // ---------------------------------------------------------------------------
 
+use ratatui::widgets::TableState;
+
 /// The top-level tab currently displayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -60,66 +62,51 @@ pub enum InputMode {
 // List state
 // ---------------------------------------------------------------------------
 
-/// Minimal list state tracker (selected index + offset for scrolling).
-pub struct ListState {
-    pub selected: usize,
-    pub offset: usize,
+/// Helper functions for key bindings.
+pub trait ContainerStateExt {
+    /// Move selection up by one.
+    fn up(&mut self);
+    /// Move selection down by one.
+    fn down(&mut self);
+    /// Page up
+    fn page_up(&mut self, n: u16);
+    /// Page down
+    fn page_down(&mut self, n: u16);
+    /// Go to top.
+    fn home(&mut self);
+    /// Go to bottom.
+    fn end(&mut self);
 }
 
-impl ListState {
-    pub fn new() -> Self {
-        Self {
-            selected: 0,
-            offset: 0,
-        }
+impl ContainerStateExt for TableState {
+    #[inline]
+    fn up(&mut self) {
+        self.select_previous();
     }
 
-    /// Move selection up by one, clamping at 0.
-    pub fn up(&mut self) {
-        self.selected = self.selected.saturating_sub(1);
+    #[inline]
+    fn down(&mut self) {
+        self.select_next();
     }
 
-    /// Move selection down by one, clamping at `max - 1`.
-    pub fn down(&mut self, max: usize) {
-        if max > 0 && self.selected < max - 1 {
-            self.selected += 1;
-        }
+    #[inline]
+    fn page_up(&mut self, n: u16) {
+        self.scroll_up_by(n);
     }
 
-    /// Jump up by `n` items.
-    pub fn page_up(&mut self, n: usize) {
-        self.selected = self.selected.saturating_sub(n);
+    #[inline]
+    fn page_down(&mut self, n: u16) {
+        self.scroll_down_by(n);
     }
 
-    /// Jump down by `n` items.
-    pub fn page_down(&mut self, n: usize, max: usize) {
-        if max > 0 {
-            self.selected = (self.selected + n).min(max - 1);
-        }
+    #[inline]
+    fn home(&mut self) {
+        self.select_first();
     }
 
-    /// Go to first item.
-    pub fn home(&mut self) {
-        self.selected = 0;
-    }
-
-    /// Go to last item.
-    pub fn end(&mut self, max: usize) {
-        if max > 0 {
-            self.selected = max - 1;
-        }
-    }
-
-    /// Ensure `selected` is visible given a viewport height. Updates `offset`.
-    pub fn ensure_visible(&mut self, viewport_height: usize) {
-        if viewport_height == 0 {
-            return;
-        }
-        if self.selected < self.offset {
-            self.offset = self.selected;
-        } else if self.selected >= self.offset + viewport_height {
-            self.offset = self.selected - viewport_height + 1;
-        }
+    #[inline]
+    fn end(&mut self) {
+        self.select_last();
     }
 }
 

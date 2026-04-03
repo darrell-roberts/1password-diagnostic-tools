@@ -4,7 +4,7 @@
 //! on construction and high-level dispatch.
 
 use super::App;
-use super::state::Tab;
+use super::state::{ContainerStateExt, Tab};
 
 impl App {
     // -----------------------------------------------------------------------
@@ -60,8 +60,7 @@ impl App {
                         self.ensure_detail_cursor_visible();
                     }
                 } else {
-                    let max = self.filtered_indices.len();
-                    self.log_list_state.down(max);
+                    self.log_list_state.down();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
                 }
@@ -70,8 +69,7 @@ impl App {
                 if self.detail_focused {
                     self.crash_detail_scroll += 1;
                 } else {
-                    let max = self.report.crash_report_entries.len();
-                    self.crash_list_state.down(max);
+                    self.crash_list_state.down();
                     self.crash_detail_scroll = 0;
                 }
             }
@@ -91,7 +89,7 @@ impl App {
                     self.detail_cursor = self.detail_cursor.saturating_sub(page);
                     self.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.log_list as usize;
+                    let page = self.viewport.log_list;
                     self.log_list_state.page_up(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
@@ -102,7 +100,7 @@ impl App {
                     let page = self.viewport.crash_detail;
                     self.crash_detail_scroll = self.crash_detail_scroll.saturating_sub(page);
                 } else {
-                    let page = self.viewport.crash_list as usize;
+                    let page = self.viewport.crash_list;
                     self.crash_list_state.page_up(page);
                     self.crash_detail_scroll = 0;
                 }
@@ -122,16 +120,15 @@ impl App {
             }
             Tab::Logs => {
                 if self.show_log_detail && self.detail_focused {
-                    let page = self.viewport.log_detail as usize;
+                    let page = self.viewport.log_detail;
                     if self.detail_line_count > 0 {
                         self.detail_cursor =
-                            (self.detail_cursor + page).min(self.detail_line_count - 1);
+                            (self.detail_cursor + page as usize).min(self.detail_line_count - 1);
                     }
                     self.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.log_list as usize;
-                    let max = self.filtered_indices.len();
-                    self.log_list_state.page_down(page, max);
+                    let page = self.viewport.log_list;
+                    self.log_list_state.page_down(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
                 }
@@ -141,9 +138,8 @@ impl App {
                     let page = self.viewport.crash_detail;
                     self.crash_detail_scroll += page;
                 } else {
-                    let page = self.viewport.crash_list as usize;
-                    let max = self.report.crash_report_entries.len();
-                    self.crash_list_state.page_down(page, max);
+                    let page = self.viewport.crash_list;
+                    self.crash_list_state.page_down(page);
                     self.crash_detail_scroll = 0;
                 }
             }
@@ -192,8 +188,7 @@ impl App {
                     }
                     self.ensure_detail_cursor_visible();
                 } else {
-                    let max = self.filtered_indices.len();
-                    self.log_list_state.end(max);
+                    self.log_list_state.end();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
                 }
@@ -202,8 +197,7 @@ impl App {
                 if self.detail_focused {
                     self.crash_detail_scroll = u16::MAX;
                 } else {
-                    let max = self.report.crash_report_entries.len();
-                    self.crash_list_state.end(max);
+                    self.crash_list_state.end();
                     self.crash_detail_scroll = 0;
                 }
             }
@@ -215,7 +209,7 @@ impl App {
     // top, or bottom of the visible area — matching vi's zz / zt / zb.
     // -----------------------------------------------------------------------
 
-    /// Scroll viewport so the current cursor line is centred (`zz`).
+    /// Scroll viewport so the current cursor line is centered (`zz`).
     pub(crate) fn scroll_cursor_center(&mut self) {
         match self.tab {
             Tab::Overview => {
@@ -228,7 +222,8 @@ impl App {
                     self.detail_scroll = self.detail_cursor.saturating_sub(half) as u16;
                 } else {
                     let half = (self.viewport.log_list as usize) / 2;
-                    self.log_list_state.offset = self.log_list_state.selected.saturating_sub(half);
+                    let selected = self.log_list_state.selected().unwrap_or_default();
+                    *self.log_list_state.offset_mut() = selected.saturating_sub(half);
                 }
             }
             Tab::CrashReports => {
@@ -236,8 +231,8 @@ impl App {
                     // No cursor concept in the detail pane — nothing to do.
                 } else {
                     let half = (self.viewport.crash_list as usize) / 2;
-                    self.crash_list_state.offset =
-                        self.crash_list_state.selected.saturating_sub(half);
+                    let selected = self.crash_list_state.selected().unwrap_or_default();
+                    *self.crash_list_state.offset_mut() = selected.saturating_sub(half);
                 }
             }
         }
@@ -253,12 +248,14 @@ impl App {
                 if self.show_log_detail && self.detail_focused {
                     self.detail_scroll = self.detail_cursor as u16;
                 } else {
-                    self.log_list_state.offset = self.log_list_state.selected;
+                    let selected = self.log_list_state.selected().unwrap_or_default();
+                    *self.log_list_state.offset_mut() = selected;
                 }
             }
             Tab::CrashReports => {
                 if !self.detail_focused {
-                    self.crash_list_state.offset = self.crash_list_state.selected;
+                    let selected = self.crash_list_state.selected().unwrap_or(0);
+                    *self.crash_list_state.offset_mut() = selected;
                 }
             }
         }
@@ -268,24 +265,24 @@ impl App {
     pub(crate) fn scroll_cursor_bottom(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let h = self.viewport.overview as usize;
-                self.overview_scroll = (self.overview_cursor + 1).saturating_sub(h) as u16;
+                let height = self.viewport.overview as usize;
+                self.overview_scroll = (self.overview_cursor + 1).saturating_sub(height) as u16;
             }
             Tab::Logs => {
                 if self.show_log_detail && self.detail_focused {
-                    let h = self.viewport.log_detail as usize;
-                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(h) as u16;
+                    let height = self.viewport.log_detail as usize;
+                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(height) as u16;
                 } else {
-                    let h = self.viewport.log_list as usize;
-                    self.log_list_state.offset =
-                        (self.log_list_state.selected + 1).saturating_sub(h);
+                    let height = self.viewport.log_list as usize;
+                    let selected = self.log_list_state.selected().unwrap_or_default();
+                    *self.log_list_state.offset_mut() = (selected + 1).saturating_sub(height);
                 }
             }
             Tab::CrashReports => {
                 if !self.detail_focused {
-                    let h = self.viewport.crash_list as usize;
-                    self.crash_list_state.offset =
-                        (self.crash_list_state.selected + 1).saturating_sub(h);
+                    let height = self.viewport.crash_list as usize;
+                    let selected = self.crash_list_state.selected().unwrap_or_default();
+                    *self.crash_list_state.offset_mut() = (selected + 1).saturating_sub(height);
                 }
             }
         }

@@ -1,15 +1,18 @@
 //! Rendering logic for the Crash Reports tab: crash list and crash detail pane.
 
-use crate::app::{App, Tab};
-use crate::ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, truncate_str};
+use crate::{
+    app::{App, Tab},
+    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL},
+};
 use chrono::Local;
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, Row, Table, Wrap},
+};
 use std::time::Duration;
-
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 
 /// Draw the entire Crash Reports tab content into the given area.
 pub fn draw_crash_reports(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -28,13 +31,13 @@ pub fn draw_crash_reports(frame: &mut Frame, app: &mut App, area: Rect) {
         return;
     }
 
-    let horiz = Layout::default()
+    let horizontal = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(area);
 
-    draw_crash_list(frame, app, horiz[0]);
-    draw_crash_detail(frame, app, horiz[1]);
+    draw_crash_list(frame, app, horizontal[0]);
+    draw_crash_detail(frame, app, horizontal[1]);
 }
 
 // ---------------------------------------------------------------------------
@@ -50,54 +53,43 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let inner_height = area.height.saturating_sub(2) as usize;
     app.viewport.crash_list = inner_height as u16;
-    app.crash_list_state.ensure_visible(inner_height);
 
     let crash_selection_range = app.crash_selection_range();
 
-    let items: Vec<ListItem> = app
+    let items = app
         .report
         .crash_report_entries
         .iter()
         .enumerate()
-        .skip(app.crash_list_state.offset)
-        .take(inner_height)
         .map(|(idx, crash)| {
-            let is_cursor = idx == app.crash_list_state.selected;
             let is_in_selection =
                 crash_selection_range.is_some_and(|(start, end)| idx >= start && idx <= end);
 
             let ts = crash
                 .timestamp_utc()
-                .map(|d| {
-                    d.with_timezone(&Local)
+                .map(|ts| {
+                    ts.with_timezone(&Local)
                         .format("%Y-%m-%d %H:%M:%S")
                         .to_string()
                 })
                 .unwrap_or_else(|| format!("{}", crash.timestamp));
 
             let type_span = Span::styled(
-                format!("{:<6}", crash.report_type),
+                &crash.report_type,
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             );
 
-            let ts_span = Span::styled(format!(" {ts} "), Style::default().fg(Color::DarkGray));
-
-            let id_avail = (area.width as usize).saturating_sub(ts.len() + 10);
-            let id_span = Span::styled(
-                truncate_str(&crash.report_id, id_avail),
-                Style::default().fg(Color::White),
-            );
+            let ts_span = Span::styled(ts, Style::default().fg(Color::DarkGray));
+            let id_span = Span::styled(&crash.report_id, Style::default().fg(Color::White));
 
             let mut style = Style::default();
-            if is_cursor {
-                style = style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD);
-            } else if is_in_selection {
-                style = style.bg(SELECT_BG);
+            if is_in_selection {
+                style = Style::new().reversed();
             }
 
-            ListItem::new(Line::from(vec![type_span, ts_span, id_span])).style(style)
+            Row::new([type_span, ts_span, id_span]).style(style)
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let show_copied = app.tab == Tab::CrashReports
         && app
@@ -114,7 +106,7 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
             if app.report.crash_report_entries.is_empty() {
                 0
             } else {
-                app.crash_list_state.selected + 1
+                app.crash_list_state.selected().map(|i| i + 1).unwrap_or(1)
             },
             app.report.crash_report_entries.len(),
             count,
@@ -122,11 +114,11 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         format!(
             " Crashes [{}/{}] ",
-            if app.report.crash_report_entries.is_empty() {
-                0
-            } else {
-                app.crash_list_state.selected + 1
-            },
+            app.crash_list_state
+                .selected()
+                .unwrap_or_default()
+                .clamp(0, app.report.crash_report_entries.len() - 1)
+                + 1,
             app.report.crash_report_entries.len(),
         )
     };
@@ -141,14 +133,22 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
         Style::default()
     };
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(Span::styled(title, title_style)),
-    );
+    let widths = [
+        Constraint::Length(6),
+        Constraint::Length(19),
+        Constraint::Fill(1),
+    ];
 
-    frame.render_widget(list, area);
+    let list = Table::new(items, widths)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .title(Span::styled(title, title_style)),
+        )
+        .row_highlight_style(Style::new().reversed());
+
+    frame.render_stateful_widget(list, area, &mut app.crash_list_state);
 }
 
 // ---------------------------------------------------------------------------
