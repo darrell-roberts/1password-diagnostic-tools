@@ -16,7 +16,7 @@ pub mod state;
 
 // Re-export the most commonly used types so callers can write `app::App`, etc.
 pub use filters::{LevelFilter, LogFileFilter, SourceFilter};
-use ratatui::widgets::TableState;
+use ratatui::widgets::{ScrollbarState, TableState};
 pub use state::{InputMode, Tab, ViewportHeights};
 
 use arboard::Clipboard;
@@ -135,6 +135,9 @@ pub struct App {
     /// Whether the previous keypress was `z`, awaiting the second key of a
     /// two-key `z` command (`zz`, `zt`, `zb`).
     pub pending_z: bool,
+
+    /// Scrollbar for log list.
+    pub log_list_scrollbar: ScrollbarState,
 }
 
 impl App {
@@ -145,6 +148,7 @@ impl App {
         let filtered_indices: Vec<usize> = (0..all_entries.len()).collect();
 
         let selected_crash_report = (!report.crash_report_entries.is_empty()).then_some(0);
+        let total_logs = all_entries.len();
 
         Self {
             report,
@@ -181,6 +185,7 @@ impl App {
             clipboard: Clipboard::new().ok(),
             copied_at: None,
             pending_z: false,
+            log_list_scrollbar: ScrollbarState::new(total_logs),
         }
     }
 
