@@ -29,6 +29,7 @@ impl App {
                     self.log_list_state.up();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    self.log_list_scrollbar.prev();
                 }
             }
             Tab::CrashReports => {
@@ -63,6 +64,7 @@ impl App {
                     self.log_list_state.down();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    self.log_list_scrollbar.next();
                 }
             }
             Tab::CrashReports => {
@@ -93,6 +95,9 @@ impl App {
                     self.log_list_state.page_up(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    for _ in 0..page {
+                        self.log_list_scrollbar.prev();
+                    }
                 }
             }
             Tab::CrashReports => {
@@ -131,6 +136,9 @@ impl App {
                     self.log_list_state.page_down(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    for _ in 0..page {
+                        self.log_list_scrollbar.next();
+                    }
                 }
             }
             Tab::CrashReports => {
@@ -160,6 +168,7 @@ impl App {
                     self.log_list_state.home();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    self.log_list_scrollbar.first();
                 }
             }
             Tab::CrashReports => {
@@ -191,6 +200,7 @@ impl App {
                     self.log_list_state.end();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
+                    self.log_list_scrollbar.last();
                 }
             }
             Tab::CrashReports => {

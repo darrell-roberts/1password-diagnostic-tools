@@ -10,10 +10,10 @@ use crate::{
 use chrono::Local;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Wrap},
 };
 use std::time::Duration;
 
@@ -279,6 +279,16 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .row_highlight_style(Style::new().reversed());
 
     frame.render_stateful_widget(table, area, &mut app.log_list_state);
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut app.log_list_scrollbar,
+    );
 }
 
 // ---------------------------------------------------------------------------
