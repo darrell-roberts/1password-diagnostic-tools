@@ -1,19 +1,21 @@
 //! Rendering logic for the Logs tab: search bar, filter bar, log list, and
 //! log detail pane.
 
-use crate::app::{App, InputMode};
-use crate::ui::helpers::{
-    BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, level_color, level_filter_color,
-    truncate_str,
+use crate::{
+    app::{App, InputMode},
+    ui::helpers::{
+        BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, level_color, level_filter_color,
+    },
 };
 use chrono::Local;
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
+};
 use std::time::Duration;
-
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 
 /// Draw the entire Logs tab content into the given area.
 pub fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -32,13 +34,13 @@ pub fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if app.show_log_detail {
         // Horizontal split: log list (left) and detail (right).
-        let horiz = Layout::default()
+        let horizontal = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
             .split(vert[2]);
 
-        draw_log_list(frame, app, horiz[0]);
-        draw_log_detail(frame, app, horiz[1]);
+        draw_log_list(frame, app, horizontal[0]);
+        draw_log_detail(frame, app, horizontal[1]);
     } else {
         // Full-width log list.
         draw_log_list(frame, app, vert[2]);
@@ -149,7 +151,6 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     let inner_height = area.height.saturating_sub(2) as usize;
     app.viewport.log_list = inner_height as u16;
-    app.log_list_state.ensure_visible(inner_height);
 
     let selection_range = app.selection_range();
     let query_lower = app.search_query.to_lowercase();
@@ -158,46 +159,32 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .bg(Color::Yellow)
         .add_modifier(Modifier::BOLD);
 
-    let items: Vec<ListItem> = app
+    let items = app
         .filtered_indices
         .iter()
         .enumerate()
-        .skip(app.log_list_state.offset)
-        .take(inner_height)
         .map(|(display_idx, &entry_idx)| {
             let entry = &app.all_entries[entry_idx];
-            let is_cursor = display_idx == app.log_list_state.selected;
             let is_in_selection = selection_range
                 .is_some_and(|(start, end)| display_idx >= start && display_idx <= end);
-
-            let level_span = Span::styled(
-                format!("{:<5}", entry.level),
-                Style::default().fg(level_color(entry.level)),
-            );
-
-            let ts = entry.timestamp.with_timezone(&Local).format("%H:%M:%S%.3f");
-            let ts_span = Span::styled(format!(" {ts} "), Style::default().fg(Color::DarkGray));
-
-            // Truncate message to fit.
-            let avail = (area.width as usize).saturating_sub(18);
-            let msg = truncate_str(&entry.message, avail);
 
             // Build message spans with search highlighting.
             let msg_spans = if !query_lower.is_empty() {
                 highlight_matches(
-                    &msg,
+                    &entry.message,
                     &query_lower,
                     Style::default().fg(Color::White),
                     highlight_style,
                 )
             } else {
-                vec![Span::styled(msg, Style::default().fg(Color::White))]
+                vec![Span::styled(
+                    &entry.message,
+                    Style::default().fg(Color::White),
+                )]
             };
 
             let mut style = Style::default();
-            if is_cursor {
-                style = style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD);
-            } else if is_in_selection {
+            if is_in_selection {
                 style = style.bg(SELECT_BG);
             }
 
@@ -207,13 +194,25 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
                 Span::raw("")
             };
 
-            let mut spans = vec![level_span, ts_span];
-            spans.extend(msg_spans);
-            spans.push(continuation_marker);
-
-            ListItem::new(Line::from(spans)).style(style)
+            Row::new([
+                Cell::from(Span::styled(
+                    entry.level.as_str(),
+                    Style::default().fg(level_color(entry.level)),
+                )),
+                Cell::from(Span::styled(
+                    entry
+                        .timestamp
+                        .with_timezone(&Local)
+                        .format("%H:%M:%S%.3f")
+                        .to_string(),
+                    Style::default().fg(Color::DarkGray),
+                )),
+                Cell::from(Line::from(msg_spans)),
+                Cell::from(continuation_marker),
+            ])
+            .style(style)
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     // Show "Copied!" flash or selection count in the title.
     let show_copied = app
@@ -230,7 +229,10 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             if app.filtered_indices.is_empty() {
                 0
             } else {
-                app.log_list_state.selected + 1
+                app.log_list_state
+                    .selected()
+                    .map(|i| i + 1)
+                    .unwrap_or_default()
             },
             app.filtered_indices.len(),
             count,
@@ -241,7 +243,10 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             if app.filtered_indices.is_empty() {
                 0
             } else {
-                app.log_list_state.selected + 1
+                app.log_list_state
+                    .selected()
+                    .map(|i| i.saturating_add(1).clamp(0, app.filtered_indices.len()))
+                    .unwrap_or_default()
             },
             app.filtered_indices.len(),
         )
@@ -257,14 +262,23 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         Style::default()
     };
 
-    let list = List::new(items).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(Span::styled(title, title_style)),
-    );
+    let widths = [
+        Constraint::Length(5),
+        Constraint::Length(12),
+        Constraint::Fill(1),
+        Constraint::Length(2),
+    ];
 
-    frame.render_widget(list, area);
+    let table = Table::new(items, widths)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .title(Span::styled(title, title_style)),
+        )
+        .row_highlight_style(Style::new().reversed());
+
+    frame.render_stateful_widget(table, area, &mut app.log_list_state);
 }
 
 // ---------------------------------------------------------------------------

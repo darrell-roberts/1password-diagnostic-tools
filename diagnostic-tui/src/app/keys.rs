@@ -5,7 +5,7 @@
 //! the application should quit.
 
 use super::App;
-use crate::app::state::{InputMode, Tab};
+use crate::app::state::{ContainerStateExt as _, InputMode, Tab};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 impl App {
@@ -236,13 +236,13 @@ impl App {
 
             // Visual select mode (Logs tab — list focused).
             KeyCode::Char('v') if self.tab == Tab::Logs => {
-                self.select_anchor = Some(self.log_list_state.selected);
+                self.select_anchor = self.log_list_state.selected();
                 self.input_mode = InputMode::Select;
             }
 
             // Visual select mode (Crash Reports list — only when list is focused).
             KeyCode::Char('v') if self.tab == Tab::CrashReports && !self.detail_focused => {
-                self.crash_select_anchor = Some(self.crash_list_state.selected);
+                self.crash_select_anchor = self.crash_list_state.selected();
                 self.input_mode = InputMode::Select;
             }
 
@@ -264,7 +264,7 @@ impl App {
 
             // Copy single entry under cursor (Logs tab — list focused).
             KeyCode::Char('y') if self.tab == Tab::Logs => {
-                self.select_anchor = Some(self.log_list_state.selected);
+                self.select_anchor = self.log_list_state.selected();
                 self.copy_selection();
             }
 
@@ -337,19 +337,17 @@ impl App {
                 self.detail_scroll = 0;
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = self.filtered_indices.len();
-                self.log_list_state.down(max);
+                self.log_list_state.down();
                 self.detail_scroll = 0;
             }
             KeyCode::PageUp => {
-                let page = self.viewport.log_list as usize;
+                let page = self.viewport.log_list;
                 self.log_list_state.page_up(page);
                 self.detail_scroll = 0;
             }
             KeyCode::PageDown => {
-                let page = self.viewport.log_list as usize;
-                let max = self.filtered_indices.len();
-                self.log_list_state.page_down(page, max);
+                let page = self.viewport.log_list;
+                self.log_list_state.page_down(page);
                 self.detail_scroll = 0;
             }
             KeyCode::Home | KeyCode::Char('g') => {
@@ -357,8 +355,7 @@ impl App {
                 self.detail_scroll = 0;
             }
             KeyCode::End | KeyCode::Char('G') => {
-                let max = self.filtered_indices.len();
-                self.log_list_state.end(max);
+                self.log_list_state.end();
                 self.detail_scroll = 0;
             }
             // Start a two-key z command (zz, zt, zb).
@@ -400,19 +397,17 @@ impl App {
                 self.crash_detail_scroll = 0;
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                let max = self.report.crash_report_entries.len();
-                self.crash_list_state.down(max);
+                self.crash_list_state.down();
                 self.crash_detail_scroll = 0;
             }
             KeyCode::PageUp => {
-                let page = self.viewport.crash_list as usize;
+                let page = self.viewport.crash_list;
                 self.crash_list_state.page_up(page);
                 self.crash_detail_scroll = 0;
             }
             KeyCode::PageDown => {
-                let page = self.viewport.crash_list as usize;
-                let max = self.report.crash_report_entries.len();
-                self.crash_list_state.page_down(page, max);
+                let page = self.viewport.crash_list;
+                self.crash_list_state.page_down(page);
                 self.crash_detail_scroll = 0;
             }
             KeyCode::Home | KeyCode::Char('g') => {
@@ -420,8 +415,7 @@ impl App {
                 self.crash_detail_scroll = 0;
             }
             KeyCode::End | KeyCode::Char('G') => {
-                let max = self.report.crash_report_entries.len();
-                self.crash_list_state.end(max);
+                self.crash_list_state.end();
                 self.crash_detail_scroll = 0;
             }
             // Start a two-key z command (zz, zt, zb).

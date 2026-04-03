@@ -89,22 +89,6 @@ pub fn help_entry<'a>(key: &'a str, desc: &'a str) -> Line<'a> {
 // String / byte formatting
 // ---------------------------------------------------------------------------
 
-/// Truncate a string to at most `max_len` characters, appending `...` when
-/// truncation occurs.
-pub fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_owned()
-    } else if max_len <= 1 {
-        "...".to_owned()
-    } else {
-        let mut end = max_len - 1;
-        while !s.is_char_boundary(end) && end > 0 {
-            end -= 1;
-        }
-        format!("{}...", &s[..end])
-    }
-}
-
 /// Format a byte count as a human-readable string (KB / MB / GB).
 pub fn format_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;

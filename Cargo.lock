@@ -377,6 +377,7 @@ dependencies = [
  "crossterm",
  "diagnostic-parser",
  "ratatui",
+ "ratatui-widgets",
 ]
 
 [[package]]

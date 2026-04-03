@@ -27,14 +27,14 @@ impl App {
     /// Returns the ordered (start, end) selection range for the Logs tab if in select mode.
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.select_anchor?;
-        let cursor = self.log_list_state.selected;
-        Some((anchor.min(cursor), anchor.max(cursor)))
+        let cursor = self.log_list_state.selected();
+        cursor.map(|selected| (anchor.min(selected), anchor.max(selected)))
     }
 
     /// Returns the ordered (start, end) selection range for the Crash list if in select mode.
     pub fn crash_selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.crash_select_anchor?;
-        let cursor = self.crash_list_state.selected;
+        let cursor = self.crash_list_state.selected()?;
         Some((anchor.min(cursor), anchor.max(cursor)))
     }
 
@@ -218,7 +218,7 @@ impl App {
             Some(range) => range,
             None => {
                 // Single-entry copy when no visual selection is active.
-                let idx = self.crash_list_state.selected;
+                let idx = self.crash_list_state.selected().unwrap_or_default();
                 (idx, idx)
             }
         };
