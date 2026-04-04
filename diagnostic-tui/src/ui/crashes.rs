@@ -358,6 +358,9 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let total_lines = lines.len();
     app.crash_detail_line_count = total_lines;
 
+    // Cache plain-text lines so copy operations don't rebuild them.
+    app.crash_detail_plain_cache = Some(app.build_crash_detail_plain_lines());
+
     // Clamp cursor.
     if total_lines > 0 && app.crash_detail_cursor >= total_lines {
         app.crash_detail_cursor = total_lines - 1;

@@ -6,6 +6,17 @@
 use super::App;
 use super::state::{ContainerStateExt, Tab};
 
+/// Clamp `scroll` so that `cursor` is visible within a viewport of `viewport_h` rows.
+pub(crate) fn ensure_cursor_visible(cursor: usize, scroll: &mut u16, viewport_h: u16) {
+    let s = *scroll as usize;
+    let h = viewport_h as usize;
+    if cursor < s {
+        *scroll = cursor as u16;
+    } else if h > 0 && cursor >= s + h {
+        *scroll = (cursor - h + 1) as u16;
+    }
+}
+
 impl App {
     // -----------------------------------------------------------------------
     // Directional navigation (up / down / page-up / page-down / home / end)
@@ -320,37 +331,28 @@ impl App {
     // Cursor visibility helpers
     // -----------------------------------------------------------------------
 
-    /// Ensure the overview cursor line is visible within the current viewport.
     pub(crate) fn ensure_overview_cursor_visible(&mut self) {
-        let viewport_h = self.viewport.overview as usize;
-        let scroll = self.overview_scroll as usize;
-        if self.overview_cursor < scroll {
-            self.overview_scroll = self.overview_cursor as u16;
-        } else if viewport_h > 0 && self.overview_cursor >= scroll + viewport_h {
-            self.overview_scroll = (self.overview_cursor - viewport_h + 1) as u16;
-        }
+        ensure_cursor_visible(
+            self.overview_cursor,
+            &mut self.overview_scroll,
+            self.viewport.overview,
+        );
     }
 
-    /// Ensure the detail cursor line is visible within the current viewport.
     pub(crate) fn ensure_detail_cursor_visible(&mut self) {
-        let viewport_h = self.viewport.log_detail as usize;
-        let scroll = self.detail_scroll as usize;
-        if self.detail_cursor < scroll {
-            self.detail_scroll = self.detail_cursor as u16;
-        } else if viewport_h > 0 && self.detail_cursor >= scroll + viewport_h {
-            self.detail_scroll = (self.detail_cursor - viewport_h + 1) as u16;
-        }
+        ensure_cursor_visible(
+            self.detail_cursor,
+            &mut self.detail_scroll,
+            self.viewport.log_detail,
+        );
     }
 
-    /// Ensure the crash detail cursor line is visible within the current viewport.
     pub(crate) fn ensure_crash_detail_cursor_visible(&mut self) {
-        let viewport_h = self.viewport.crash_detail as usize;
-        let scroll = self.crash_detail_scroll as usize;
-        if self.crash_detail_cursor < scroll {
-            self.crash_detail_scroll = self.crash_detail_cursor as u16;
-        } else if viewport_h > 0 && self.crash_detail_cursor >= scroll + viewport_h {
-            self.crash_detail_scroll = (self.crash_detail_cursor - viewport_h + 1) as u16;
-        }
+        ensure_cursor_visible(
+            self.crash_detail_cursor,
+            &mut self.crash_detail_scroll,
+            self.viewport.crash_detail,
+        );
     }
 
     // -----------------------------------------------------------------------

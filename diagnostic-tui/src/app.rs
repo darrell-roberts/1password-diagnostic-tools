@@ -147,6 +147,9 @@ pub struct App {
     /// Number of items/lines in the last successful copy, for the flash message.
     pub copied_count: usize,
 
+    /// Cached plain-text lines for the crash detail pane, built during render.
+    pub crash_detail_plain_cache: Option<Vec<String>>,
+
     /// Whether the previous keypress was `z`, awaiting the second key of a
     /// two-key `z` command (`zz`, `zt`, `zb`).
     pub pending_z: bool,
@@ -204,6 +207,7 @@ impl App {
             clipboard: Clipboard::new().ok(),
             copied_at: None,
             copied_count: 0,
+            crash_detail_plain_cache: None,
             pending_z: false,
             log_list_scrollbar: ScrollbarState::new(total_logs),
         }
@@ -387,16 +391,23 @@ impl App {
             return self.handle_log_file_picker_key(key);
         }
 
+        use keys::{ListSelectTarget, PaneSelectTarget};
         match self.input_mode {
             InputMode::Search => self.handle_search_key(key),
             InputMode::Normal => self.handle_normal_key(key),
-            InputMode::Select if self.tab == Tab::Overview => self.handle_overview_select_key(key),
-            InputMode::Select if self.tab == Tab::CrashReports && self.crash_detail_selecting => {
-                self.handle_crash_detail_select_key(key)
+            InputMode::Select if self.tab == Tab::Overview => {
+                self.handle_pane_select_key(key, PaneSelectTarget::Overview)
             }
-            InputMode::Select if self.tab == Tab::CrashReports => self.handle_crash_select_key(key),
-            InputMode::Select if self.detail_selecting => self.handle_detail_select_key(key),
-            InputMode::Select => self.handle_select_key(key),
+            InputMode::Select if self.tab == Tab::CrashReports && self.crash_detail_selecting => {
+                self.handle_pane_select_key(key, PaneSelectTarget::CrashDetail)
+            }
+            InputMode::Select if self.tab == Tab::CrashReports => {
+                self.handle_list_select_key(key, ListSelectTarget::Crashes)
+            }
+            InputMode::Select if self.detail_selecting => {
+                self.handle_pane_select_key(key, PaneSelectTarget::LogDetail)
+            }
+            InputMode::Select => self.handle_list_select_key(key, ListSelectTarget::Logs),
         }
     }
 }
