@@ -1,23 +1,24 @@
-//! Shared UI helper functions, colour palette, and small utilities used
+//! Shared UI helper functions, color palette, and small utilities used
 //! across all rendering modules.
 
 use crate::app::filters::LevelFilter;
 use diagnostic_parser::log_entry::LogLevel;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::{
+    layout::Rect,
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+};
 
 // ---------------------------------------------------------------------------
-// Colour palette
+// Color palette
 // ---------------------------------------------------------------------------
 
-pub const HIGHLIGHT_BG: Color = Color::Rgb(50, 50, 80);
 pub const SELECT_BG: Color = Color::Rgb(60, 60, 40);
 pub const BORDER_FOCUSED: Color = Color::Cyan;
 pub const BORDER_NORMAL: Color = Color::DarkGray;
 pub const TAB_ACTIVE: Color = Color::Cyan;
 
-/// Map a log level to its display colour.
+/// Map a log level to its display color.
 pub fn level_color(level: LogLevel) -> Color {
     match level {
         LogLevel::Trace => Color::DarkGray,
@@ -28,7 +29,7 @@ pub fn level_color(level: LogLevel) -> Color {
     }
 }
 
-/// Pick a colour that represents the current level-filter state.
+/// Pick a color that represents the current level-filter state.
 pub fn level_filter_color(filter: &LevelFilter) -> Color {
     if filter.show_trace {
         Color::White

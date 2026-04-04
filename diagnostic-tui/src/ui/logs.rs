@@ -3,9 +3,7 @@
 
 use crate::{
     app::{InputMode, LogsState},
-    ui::helpers::{
-        BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, level_color, level_filter_color,
-    },
+    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG, level_color, level_filter_color},
 };
 use chrono::Local;
 use diagnostic_parser::log_entry::LogEntry;
@@ -568,7 +566,7 @@ fn render_log_detail(
                         .map(|span| {
                             Span::styled(
                                 span.content.clone(),
-                                span.style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD),
+                                span.style.reversed().add_modifier(Modifier::BOLD),
                             )
                         })
                         .collect::<Vec<_>>(),

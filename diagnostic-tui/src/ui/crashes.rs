@@ -2,7 +2,7 @@
 
 use crate::{
     app::{CrashReportsState, Tab},
-    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG},
+    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG},
 };
 use chrono::Local;
 use diagnostic_parser::{
@@ -95,7 +95,7 @@ fn render_crash_list(
 
     let crash_selection_range = state.selection_range();
 
-    let items: Vec<Row> = crash_entries
+    let items = crash_entries
         .iter()
         .enumerate()
         .map(|(idx, crash)| {
@@ -126,7 +126,7 @@ fn render_crash_list(
 
             Row::new([type_span, ts_span, id_span]).style(style)
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let show_copied =
         tab == Tab::CrashReports && copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
@@ -263,7 +263,7 @@ fn render_crash_detail(
         return;
     };
 
-    let mut lines: Vec<Line> = vec![
+    let mut lines = Vec::from([
         Line::from(vec![
             Span::styled("Report ID: ", Style::default().fg(Color::DarkGray)),
             Span::raw(report_id),
@@ -284,97 +284,109 @@ fn render_crash_detail(
             Span::raw(tag),
         ]),
         Line::from(""),
-    ];
+    ]);
 
     if let Some(entry) = panic_entry {
-        lines.push(Line::from(Span::styled(
-            "Linked Panic Entry",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-        )));
-        lines.push(Line::from(""));
+        lines.extend([
+            Line::from(Span::styled(
+                "Linked Panic Entry",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+            )),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
+                Span::raw(entry.log_file_title.clone()),
+            ]),
+            Line::from(vec![
+                Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
+                Span::raw(entry.thread.clone()),
+            ]),
+            Line::from(vec![
+                Span::styled("Source:    ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    entry.source.raw().into_owned(),
+                    Style::default().fg(Color::Magenta),
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("Timestamp: ", Style::default().fg(Color::DarkGray)),
+                Span::raw(entry.timestamp.with_timezone(&Local).to_string()),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Message:",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+        ]);
 
-        lines.push(Line::from(vec![
-            Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
-            Span::raw(entry.log_file_title.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
-            Span::raw(entry.thread.clone()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Source:    ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                entry.source.raw().into_owned(),
-                Style::default().fg(Color::Magenta),
-            ),
-        ]));
-        lines.push(Line::from(vec![
-            Span::styled("Timestamp: ", Style::default().fg(Color::DarkGray)),
-            Span::raw(entry.timestamp.with_timezone(&Local).to_string()),
-        ]));
-
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "Message:",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )));
-        lines.push(Line::from(""));
-
-        for msg_line in entry.message.lines() {
-            lines.push(Line::from(Span::raw(msg_line.to_string())));
-        }
+        lines.extend(
+            entry
+                .message
+                .lines()
+                .map(|line| Line::from(Span::raw(line))),
+        );
 
         if entry.has_continuation() {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                format!("Call Stack ({} frames):", entry.continuation.len()),
-                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(""));
+            lines.extend([
+                Line::from(""),
+                Line::from(Span::styled(
+                    format!("Call Stack ({} frames):", entry.continuation.len()),
+                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+            ]);
 
-            for (i, frame_line) in entry.continuation.iter().enumerate() {
-                let trimmed = frame_line.trim_start();
-                let fg = if i % 2 == 0 {
-                    Color::Yellow
-                } else {
-                    Color::White
-                };
-                lines.push(Line::from(Span::styled(
-                    trimmed.to_string(),
-                    Style::default().fg(fg),
-                )));
-            }
+            lines.extend(
+                entry
+                    .continuation
+                    .iter()
+                    .enumerate()
+                    .map(|(i, frame_line)| {
+                        let trimmed = frame_line.trim_start();
+                        let fg = if i % 2 == 0 {
+                            Color::Yellow
+                        } else {
+                            Color::White
+                        };
+                        Line::from(Span::styled(trimmed.to_string(), Style::default().fg(fg)))
+                    }),
+            );
         } else {
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "(no stack trace attached to panic entry)",
-                Style::default().fg(Color::DarkGray),
-            )));
+            lines.extend([
+                Line::from(""),
+                Line::from(Span::styled(
+                    "(no stack trace attached to panic entry)",
+                    Style::default().fg(Color::DarkGray),
+                )),
+            ]);
         }
     } else {
-        lines.push(Line::from(Span::styled(
-            "No matching panic log entry found.",
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::ITALIC),
-        )));
-        lines.push(Line::from(""));
-        lines.push(Line::from(Span::styled(
-            "The crash report could not be correlated with a panic log entry.",
-            Style::default().fg(Color::DarkGray),
-        )));
-        lines.push(Line::from(Span::styled(
-            "This may happen if the log file has been rotated or the crash",
-            Style::default().fg(Color::DarkGray),
-        )));
-        lines.push(Line::from(Span::styled(
-            "occurred outside the captured log window.",
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.extend([
+            Line::from(Span::styled(
+                "No matching panic log entry found.",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                "The crash report could not be correlated with a panic log entry.",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(Span::styled(
+                "This may happen if the log file has been rotated or the crash",
+                Style::default().fg(Color::DarkGray),
+            )),
+            Line::from(Span::styled(
+                "occurred outside the captured log window.",
+                Style::default().fg(Color::DarkGray),
+            )),
+        ]);
     }
 
     let total_lines = lines.len();
@@ -417,7 +429,7 @@ fn render_crash_detail(
                         .map(|span| {
                             Span::styled(
                                 span.content.clone(),
-                                span.style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD),
+                                span.style.reversed().add_modifier(Modifier::BOLD),
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -473,31 +485,36 @@ fn crash_report_plain_lines(
     ];
 
     if let Some(entry) = panic_entry {
-        lines.push("Linked Panic Entry".to_string());
-        lines.push(String::new());
-        lines.push(format!("Log File:  {}", entry.log_file_title));
-        lines.push(format!("Thread:    {}", entry.thread));
-        lines.push(format!("Source:    {}", entry.source.raw()));
-        lines.push(format!(
-            "Timestamp: {}",
-            entry.timestamp.with_timezone(&Local)
-        ));
-        lines.push(String::new());
-        lines.push("Message:".to_string());
-        lines.push(String::new());
-        for msg_line in entry.message.lines() {
-            lines.push(msg_line.to_string());
-        }
+        lines.extend([
+            "Linked Panic Entry".to_string(),
+            String::new(),
+            format!("Log File:  {}", entry.log_file_title),
+            format!("Thread:    {}", entry.thread),
+            format!("Source:    {}", entry.source.raw()),
+            format!("Timestamp: {}", entry.timestamp.with_timezone(&Local)),
+            String::new(),
+            "Message:".to_string(),
+            String::new(),
+        ]);
+        lines.extend(entry.message.lines().map(ToOwned::to_owned));
+
         if entry.has_continuation() {
-            lines.push(String::new());
-            lines.push(format!("Call Stack ({} frames):", entry.continuation.len()));
-            lines.push(String::new());
-            for frame_line in &entry.continuation {
-                lines.push(frame_line.trim_start().to_string());
-            }
+            lines.extend([
+                String::new(),
+                format!("Call Stack ({} frames):", entry.continuation.len()),
+                String::new(),
+            ]);
+            lines.extend(
+                entry
+                    .continuation
+                    .iter()
+                    .map(|frame_line| frame_line.trim_start().to_string()),
+            );
         } else {
-            lines.push(String::new());
-            lines.push("(no stack trace attached to panic entry)".to_string());
+            lines.extend([
+                String::new(),
+                "(no stack trace attached to panic entry)".to_string(),
+            ]);
         }
     } else {
         lines.push("No matching panic log entry found.".to_string());
