@@ -2,7 +2,7 @@
 //! help screen.
 
 use crate::app::App;
-use crate::ui::helpers::{HIGHLIGHT_BG, centered_rect, help_entry};
+use crate::ui::helpers::{centered_rect, help_entry};
 
 use ratatui::Frame;
 use ratatui::layout::{Alignment, Rect};
@@ -43,12 +43,9 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // "All Sources" entry.
     let all_style = if app.logs.source_picker_selected == 0 {
-        Style::default()
-            .bg(HIGHLIGHT_BG)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        Style::new().add_modifier(Modifier::BOLD).reversed()
     } else {
-        Style::default().fg(Color::White)
+        Style::new().add_modifier(Modifier::BOLD)
     };
     let all_prefix = if app.logs.source_filter.selected.is_none() {
         "● "
@@ -67,14 +64,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
         let is_active = app.logs.source_filter.selected == Some(i);
 
         let style = if is_highlighted {
-            Style::default()
-                .bg(HIGHLIGHT_BG)
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD)
-        } else if is_active {
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD)
+            Style::new().reversed()
         } else {
             Style::default().fg(Color::White)
         };
@@ -132,12 +122,9 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 
     // "All Log Files" entry.
     let all_style = if app.logs.log_file_picker_selected == 0 {
-        Style::default()
-            .bg(HIGHLIGHT_BG)
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        Style::new().add_modifier(Modifier::BOLD).reversed()
     } else {
-        Style::default().fg(Color::White)
+        Style::default().add_modifier(Modifier::BOLD)
     };
     let all_prefix = if app.logs.log_file_filter.selected.is_none() {
         "● "
@@ -156,14 +143,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
         let is_active = app.logs.log_file_filter.selected == Some(i);
 
         let style = if is_highlighted {
-            Style::default()
-                .bg(HIGHLIGHT_BG)
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD)
-        } else if is_active {
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD)
+            Style::new().reversed().add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(Color::White)
         };
