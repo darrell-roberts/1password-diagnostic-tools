@@ -27,22 +27,22 @@ impl App {
     pub(super) fn handle_search_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Esc => {
-                self.search_query.clear();
+                self.logs.search_query.clear();
                 self.input_mode = InputMode::Normal;
             }
             KeyCode::Enter => {
                 self.input_mode = InputMode::Normal;
             }
             KeyCode::Backspace => {
-                self.search_query.pop();
-                self.find_nearest();
+                self.logs.search_query.pop();
+                self.logs.find_nearest(&self.all_entries);
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.search_query.clear();
+                self.logs.search_query.clear();
             }
             KeyCode::Char(c) => {
-                self.search_query.push(c);
-                self.find_nearest();
+                self.logs.search_query.push(c);
+                self.logs.find_nearest(&self.all_entries);
             }
             _ => {}
         }
@@ -84,32 +84,35 @@ impl App {
 
             // Tab switching.
             KeyCode::Tab | KeyCode::Right if key.modifiers.is_empty() && self.tab_nav_keys() => {
-                // Right arrow is only for tab nav on overview; on logs/crashes it
-                // might be used differently. We use Tab universally.
                 if key.code == KeyCode::Tab {
                     self.tab = self.tab.next();
-                    self.detail_focused = false;
-                    self.show_log_detail = false;
+                    self.logs.detail_focused = false;
+                    self.crashes.detail_focused = false;
+                    self.logs.show_detail = false;
                 }
             }
             KeyCode::BackTab => {
                 self.tab = self.tab.prev();
-                self.detail_focused = false;
-                self.show_log_detail = false;
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
+                self.logs.show_detail = false;
             }
             KeyCode::Char('1') => {
                 self.tab = Tab::Overview;
-                self.detail_focused = false;
-                self.show_log_detail = false;
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
+                self.logs.show_detail = false;
             }
             KeyCode::Char('2') => {
                 self.tab = Tab::Logs;
-                self.detail_focused = false;
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
             }
             KeyCode::Char('3') => {
                 self.tab = Tab::CrashReports;
-                self.detail_focused = false;
-                self.show_log_detail = false;
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
+                self.logs.show_detail = false;
             }
 
             // Search (only on Logs tab).
@@ -119,30 +122,31 @@ impl App {
 
             // Clear search / close log detail / unfocus detail.
             KeyCode::Esc => {
-                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused {
-                    self.detail_focused = false;
-                } else if self.tab == Tab::Logs && self.show_log_detail {
-                    self.show_log_detail = false;
-                    self.detail_scroll = 0;
-                } else if !self.search_query.is_empty() {
-                    self.search_query.clear();
+                if self.tab == Tab::Logs && self.logs.show_detail && self.logs.detail_focused {
+                    self.logs.detail_focused = false;
+                } else if self.tab == Tab::Logs && self.logs.show_detail {
+                    self.logs.show_detail = false;
+                    self.logs.detail_scroll = 0;
+                } else if !self.logs.search_query.is_empty() {
+                    self.logs.search_query.clear();
                 } else {
-                    self.detail_focused = false;
+                    self.logs.detail_focused = false;
+                    self.crashes.detail_focused = false;
                 }
             }
 
             // Find next / previous match.
-            KeyCode::Char('n') if self.tab == Tab::Logs && !self.search_query.is_empty() => {
-                self.find_next();
+            KeyCode::Char('n') if self.tab == Tab::Logs && !self.logs.search_query.is_empty() => {
+                self.logs.find_next(&self.all_entries);
             }
-            KeyCode::Char('N') if self.tab == Tab::Logs && !self.search_query.is_empty() => {
-                self.find_prev();
+            KeyCode::Char('N') if self.tab == Tab::Logs && !self.logs.search_query.is_empty() => {
+                self.logs.find_prev(&self.all_entries);
             }
 
             // Level filter cycle.
             KeyCode::Char('f') if self.tab == Tab::Logs && !control_pressed => {
-                self.level_filter.cycle();
-                self.refilter();
+                self.logs.level_filter.cycle();
+                self.logs.refilter(&self.all_entries);
             }
 
             KeyCode::Char('f') if control_pressed => {
@@ -155,69 +159,66 @@ impl App {
 
             // Source filter cycle.
             KeyCode::Char('s') if self.tab == Tab::Logs => {
-                self.source_filter.cycle_next();
-                self.refilter();
+                self.logs.source_filter.cycle_next();
+                self.logs.refilter(&self.all_entries);
             }
 
             // Source picker popup.
             KeyCode::Char('S') if self.tab == Tab::Logs => {
                 // Sync picker selection with current filter state.
-                self.source_picker_selected = match self.source_filter.selected {
+                self.logs.source_picker_selected = match self.logs.source_filter.selected {
                     None => 0,
                     Some(idx) => idx + 1,
                 };
-                self.show_source_picker = true;
+                self.logs.show_source_picker = true;
             }
 
             // Reset source filter to All Sources.
             KeyCode::Char('a') if self.tab == Tab::Logs => {
-                self.source_filter.selected = None;
-                self.refilter();
+                self.logs.source_filter.selected = None;
+                self.logs.refilter(&self.all_entries);
             }
 
             // Log file filter cycle.
             KeyCode::Char('l') if self.tab == Tab::Logs => {
-                self.log_file_filter.cycle_next();
-                self.refilter();
+                self.logs.log_file_filter.cycle_next();
+                self.logs.refilter(&self.all_entries);
             }
 
             // Log file picker popup.
             KeyCode::Char('L') if self.tab == Tab::Logs => {
-                self.log_file_picker_selected = match self.log_file_filter.selected {
+                self.logs.log_file_picker_selected = match self.logs.log_file_filter.selected {
                     None => 0,
                     Some(idx) => idx + 1,
                 };
-                self.show_log_file_picker = true;
+                self.logs.show_log_file_picker = true;
             }
 
             // Reset log file filter to All Log Files (combine all logs).
             KeyCode::Char('A') if self.tab == Tab::Logs => {
-                self.log_file_filter.selected = None;
-                self.refilter();
+                self.logs.log_file_filter.selected = None;
+                self.logs.refilter(&self.all_entries);
             }
 
             // Toggle detail view.
             KeyCode::Char('d') | KeyCode::Enter => {
                 if self.tab == Tab::Logs {
-                    if self.show_log_detail && self.detail_focused {
-                        // Unfocus detail when pressing d/Enter while detail is focused.
-                        self.detail_focused = false;
-                    } else if self.show_log_detail && !self.detail_focused {
-                        // Focus detail when pressing d/Enter while detail is visible but not focused.
-                        self.detail_focused = true;
-                        self.detail_cursor = 0;
-                        self.detail_scroll = 0;
+                    if self.logs.show_detail && self.logs.detail_focused {
+                        self.logs.detail_focused = false;
+                    } else if self.logs.show_detail && !self.logs.detail_focused {
+                        self.logs.detail_focused = true;
+                        self.logs.detail_cursor = 0;
+                        self.logs.detail_scroll = 0;
                     } else {
-                        // Open detail and focus it.
-                        self.show_log_detail = true;
-                        self.detail_focused = true;
-                        self.detail_cursor = 0;
-                        self.detail_scroll = 0;
+                        self.logs.show_detail = true;
+                        self.logs.detail_focused = true;
+                        self.logs.detail_cursor = 0;
+                        self.logs.detail_scroll = 0;
                     }
                 } else if self.tab == Tab::CrashReports {
-                    self.detail_focused = !self.detail_focused;
-                    self.crash_detail_cursor = 0;
-                    self.crash_detail_scroll = 0;
+                    self.crashes.detail_focused = !self.crashes.detail_focused;
+                    self.crashes.detail_cursor = 0;
+                    self.crashes.detail_scroll = 0;
                 }
             }
 
@@ -236,64 +237,64 @@ impl App {
 
             // Visual select mode (Overview tab).
             KeyCode::Char('v') if self.tab == Tab::Overview => {
-                self.overview_select_anchor = Some(self.overview_cursor);
+                self.overview.select_anchor = Some(self.overview.cursor);
                 self.input_mode = InputMode::Select;
             }
 
             // Visual select mode (Logs tab — detail pane focused).
             KeyCode::Char('v')
-                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused =>
+                if self.tab == Tab::Logs && self.logs.show_detail && self.logs.detail_focused =>
             {
-                self.detail_select_anchor = Some(self.detail_cursor);
-                self.detail_selecting = true;
+                self.logs.detail_select_anchor = Some(self.logs.detail_cursor);
+                self.logs.detail_selecting = true;
                 self.input_mode = InputMode::Select;
             }
 
             // Visual select mode (Logs tab — list focused).
             KeyCode::Char('v') if self.tab == Tab::Logs => {
-                self.select_anchor = self.log_list_state.selected();
+                self.logs.select_anchor = self.logs.list_state.selected();
                 self.input_mode = InputMode::Select;
             }
 
             // Visual select mode (Crash Reports — detail pane focused).
-            KeyCode::Char('v') if self.tab == Tab::CrashReports && self.detail_focused => {
-                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
-                self.crash_detail_selecting = true;
+            KeyCode::Char('v') if self.tab == Tab::CrashReports && self.crashes.detail_focused => {
+                self.crashes.detail_select_anchor = Some(self.crashes.detail_cursor);
+                self.crashes.detail_selecting = true;
                 self.input_mode = InputMode::Select;
             }
 
             // Visual select mode (Crash Reports list — list focused).
             KeyCode::Char('v') if self.tab == Tab::CrashReports => {
-                self.crash_select_anchor = self.crash_list_state.selected();
+                self.crashes.select_anchor = self.crashes.list_state.selected();
                 self.input_mode = InputMode::Select;
             }
 
-            // Copy single line under cursor (Overview tab) — copies visible top line.
+            // Copy single line under cursor (Overview tab).
             KeyCode::Char('y') if self.tab == Tab::Overview => {
-                self.overview_cursor = self.overview_scroll as usize;
-                self.overview_select_anchor = Some(self.overview_cursor);
+                self.overview.cursor = self.overview.scroll as usize;
+                self.overview.select_anchor = Some(self.overview.cursor);
                 self.copy_overview_selection();
             }
 
             // Copy single line under cursor (Logs tab — detail pane focused).
             KeyCode::Char('y')
-                if self.tab == Tab::Logs && self.show_log_detail && self.detail_focused =>
+                if self.tab == Tab::Logs && self.logs.show_detail && self.logs.detail_focused =>
             {
-                self.detail_select_anchor = Some(self.detail_cursor);
-                self.detail_selecting = true;
+                self.logs.detail_select_anchor = Some(self.logs.detail_cursor);
+                self.logs.detail_selecting = true;
                 self.copy_detail_selection();
             }
 
             // Copy single entry under cursor (Logs tab — list focused).
             KeyCode::Char('y') if self.tab == Tab::Logs => {
-                self.select_anchor = self.log_list_state.selected();
+                self.logs.select_anchor = self.logs.list_state.selected();
                 self.copy_selection();
             }
 
             // Copy single line under cursor (Crash Reports — detail pane focused).
-            KeyCode::Char('y') if self.tab == Tab::CrashReports && self.detail_focused => {
-                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
-                self.crash_detail_selecting = true;
+            KeyCode::Char('y') if self.tab == Tab::CrashReports && self.crashes.detail_focused => {
+                self.crashes.detail_select_anchor = Some(self.crashes.detail_cursor);
+                self.crashes.detail_selecting = true;
                 self.copy_crash_detail_selection();
             }
 
@@ -304,32 +305,32 @@ impl App {
 
             // Right arrow to open/focus detail, left arrow to close/unfocus it.
             KeyCode::Right if self.tab == Tab::Logs => {
-                if !self.show_log_detail {
-                    self.show_log_detail = true;
-                    self.detail_focused = true;
-                    self.detail_cursor = 0;
-                    self.detail_scroll = 0;
-                } else if !self.detail_focused {
-                    self.detail_focused = true;
-                    self.detail_cursor = 0;
-                    self.detail_scroll = 0;
+                if !self.logs.show_detail {
+                    self.logs.show_detail = true;
+                    self.logs.detail_focused = true;
+                    self.logs.detail_cursor = 0;
+                    self.logs.detail_scroll = 0;
+                } else if !self.logs.detail_focused {
+                    self.logs.detail_focused = true;
+                    self.logs.detail_cursor = 0;
+                    self.logs.detail_scroll = 0;
                 }
             }
             KeyCode::Right if self.tab == Tab::CrashReports => {
-                self.detail_focused = true;
-                self.crash_detail_cursor = 0;
-                self.crash_detail_scroll = 0;
+                self.crashes.detail_focused = true;
+                self.crashes.detail_cursor = 0;
+                self.crashes.detail_scroll = 0;
             }
             KeyCode::Left if self.tab == Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    self.detail_focused = false;
-                } else if self.show_log_detail {
-                    self.show_log_detail = false;
-                    self.detail_scroll = 0;
+                if self.logs.show_detail && self.logs.detail_focused {
+                    self.logs.detail_focused = false;
+                } else if self.logs.show_detail {
+                    self.logs.show_detail = false;
+                    self.logs.detail_scroll = 0;
                 }
             }
             KeyCode::Left if self.tab == Tab::CrashReports => {
-                self.detail_focused = false;
+                self.crashes.detail_focused = false;
             }
 
             _ => {}
@@ -357,14 +358,14 @@ impl App {
 
         let (table, page, scroll_reset) = match target {
             ListSelectTarget::Logs => (
-                &mut self.log_list_state,
-                self.viewport.log_list,
-                &mut self.detail_scroll,
+                &mut self.logs.list_state,
+                self.logs.list_viewport_height,
+                &mut self.logs.detail_scroll,
             ),
             ListSelectTarget::Crashes => (
-                &mut self.crash_list_state,
-                self.viewport.crash_list,
-                &mut self.crash_detail_scroll,
+                &mut self.crashes.list_state,
+                self.crashes.list_viewport_height,
+                &mut self.crashes.detail_scroll,
             ),
         };
 
@@ -405,8 +406,8 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 match target {
-                    ListSelectTarget::Logs => self.select_anchor = None,
-                    ListSelectTarget::Crashes => self.crash_select_anchor = None,
+                    ListSelectTarget::Logs => self.logs.select_anchor = None,
+                    ListSelectTarget::Crashes => self.crashes.select_anchor = None,
                 }
                 self.input_mode = InputMode::Normal;
             }
@@ -428,22 +429,22 @@ impl App {
     ) -> bool {
         let (cursor, scroll, line_count, viewport_h) = match target {
             PaneSelectTarget::Overview => (
-                &mut self.overview_cursor,
-                &mut self.overview_scroll,
-                self.overview_line_count,
-                self.viewport.overview,
+                &mut self.overview.cursor,
+                &mut self.overview.scroll,
+                self.overview.line_count,
+                self.overview.viewport_height,
             ),
             PaneSelectTarget::LogDetail => (
-                &mut self.detail_cursor,
-                &mut self.detail_scroll,
-                self.detail_line_count,
-                self.viewport.log_detail,
+                &mut self.logs.detail_cursor,
+                &mut self.logs.detail_scroll,
+                self.logs.detail_line_count,
+                self.logs.detail_viewport_height,
             ),
             PaneSelectTarget::CrashDetail => (
-                &mut self.crash_detail_cursor,
-                &mut self.crash_detail_scroll,
-                self.crash_detail_line_count,
-                self.viewport.crash_detail,
+                &mut self.crashes.detail_cursor,
+                &mut self.crashes.detail_scroll,
+                self.crashes.detail_line_count,
+                self.crashes.detail_viewport_height,
             ),
         };
 
@@ -507,14 +508,14 @@ impl App {
         match key.code {
             KeyCode::Esc => {
                 match target {
-                    PaneSelectTarget::Overview => self.overview_select_anchor = None,
+                    PaneSelectTarget::Overview => self.overview.select_anchor = None,
                     PaneSelectTarget::LogDetail => {
-                        self.detail_select_anchor = None;
-                        self.detail_selecting = false;
+                        self.logs.detail_select_anchor = None;
+                        self.logs.detail_selecting = false;
                     }
                     PaneSelectTarget::CrashDetail => {
-                        self.crash_detail_select_anchor = None;
-                        self.crash_detail_selecting = false;
+                        self.crashes.detail_select_anchor = None;
+                        self.crashes.detail_selecting = false;
                     }
                 }
                 self.input_mode = InputMode::Normal;
@@ -535,49 +536,49 @@ impl App {
 
     /// Handle keys when the source picker popup is open.
     pub(super) fn handle_source_picker_key(&mut self, key: KeyEvent) -> bool {
-        // Total items: 1 ("All Sources") + number of available sources.
-        let total = 1 + self.source_filter.available.len();
-        let page = self.viewport.source_picker as usize;
+        let total = 1 + self.logs.source_filter.available.len();
+        let page = self.logs.source_picker_viewport_height as usize;
 
         match key.code {
             KeyCode::Esc | KeyCode::Char('S') | KeyCode::Char('s') => {
-                self.show_source_picker = false;
+                self.logs.show_source_picker = false;
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.source_picker_selected > 0 {
-                    self.source_picker_selected -= 1;
+                if self.logs.source_picker_selected > 0 {
+                    self.logs.source_picker_selected -= 1;
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if self.source_picker_selected + 1 < total {
-                    self.source_picker_selected += 1;
+                if self.logs.source_picker_selected + 1 < total {
+                    self.logs.source_picker_selected += 1;
                 }
             }
             KeyCode::PageUp => {
-                self.source_picker_selected = self.source_picker_selected.saturating_sub(page);
+                self.logs.source_picker_selected =
+                    self.logs.source_picker_selected.saturating_sub(page);
             }
             KeyCode::PageDown => {
                 if total > 0 {
-                    self.source_picker_selected =
-                        (self.source_picker_selected + page).min(total - 1);
+                    self.logs.source_picker_selected =
+                        (self.logs.source_picker_selected + page).min(total - 1);
                 }
             }
             KeyCode::Home | KeyCode::Char('g') => {
-                self.source_picker_selected = 0;
+                self.logs.source_picker_selected = 0;
             }
             KeyCode::End | KeyCode::Char('G') => {
                 if total > 0 {
-                    self.source_picker_selected = total - 1;
+                    self.logs.source_picker_selected = total - 1;
                 }
             }
             KeyCode::Enter => {
-                if self.source_picker_selected == 0 {
-                    self.source_filter.selected = None;
+                if self.logs.source_picker_selected == 0 {
+                    self.logs.source_filter.selected = None;
                 } else {
-                    self.source_filter.selected = Some(self.source_picker_selected - 1);
+                    self.logs.source_filter.selected = Some(self.logs.source_picker_selected - 1);
                 }
-                self.show_source_picker = false;
-                self.refilter();
+                self.logs.show_source_picker = false;
+                self.logs.refilter(&self.all_entries);
             }
             _ => {}
         }
@@ -586,48 +587,50 @@ impl App {
 
     /// Handle keys when the log file picker popup is open.
     pub(super) fn handle_log_file_picker_key(&mut self, key: KeyEvent) -> bool {
-        let total = 1 + self.log_file_filter.available.len();
-        let page = self.viewport.log_file_picker as usize;
+        let total = 1 + self.logs.log_file_filter.available.len();
+        let page = self.logs.log_file_picker_viewport_height as usize;
 
         match key.code {
             KeyCode::Esc | KeyCode::Char('L') | KeyCode::Char('l') => {
-                self.show_log_file_picker = false;
+                self.logs.show_log_file_picker = false;
             }
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.log_file_picker_selected > 0 {
-                    self.log_file_picker_selected -= 1;
+                if self.logs.log_file_picker_selected > 0 {
+                    self.logs.log_file_picker_selected -= 1;
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if self.log_file_picker_selected + 1 < total {
-                    self.log_file_picker_selected += 1;
+                if self.logs.log_file_picker_selected + 1 < total {
+                    self.logs.log_file_picker_selected += 1;
                 }
             }
             KeyCode::PageUp => {
-                self.log_file_picker_selected = self.log_file_picker_selected.saturating_sub(page);
+                self.logs.log_file_picker_selected =
+                    self.logs.log_file_picker_selected.saturating_sub(page);
             }
             KeyCode::PageDown => {
                 if total > 0 {
-                    self.log_file_picker_selected =
-                        (self.log_file_picker_selected + page).min(total - 1);
+                    self.logs.log_file_picker_selected =
+                        (self.logs.log_file_picker_selected + page).min(total - 1);
                 }
             }
             KeyCode::Home | KeyCode::Char('g') => {
-                self.log_file_picker_selected = 0;
+                self.logs.log_file_picker_selected = 0;
             }
             KeyCode::End | KeyCode::Char('G') => {
                 if total > 0 {
-                    self.log_file_picker_selected = total - 1;
+                    self.logs.log_file_picker_selected = total - 1;
                 }
             }
             KeyCode::Enter => {
-                if self.log_file_picker_selected == 0 {
-                    self.log_file_filter.selected = None;
+                if self.logs.log_file_picker_selected == 0 {
+                    self.logs.log_file_filter.selected = None;
                 } else {
-                    self.log_file_filter.selected = Some(self.log_file_picker_selected - 1);
+                    self.logs.log_file_filter.selected =
+                        Some(self.logs.log_file_picker_selected - 1);
                 }
-                self.show_log_file_picker = false;
-                self.refilter();
+                self.logs.show_log_file_picker = false;
+                self.logs.refilter(&self.all_entries);
             }
             _ => {}
         }

@@ -16,13 +16,18 @@ mod popups;
 
 use crate::app::{App, InputMode, Tab};
 
-use ratatui::Frame;
-use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Tabs};
+use ratatui::{
+    Frame,
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, StatefulWidget, Tabs},
+};
 
+use crashes::CrashReportsWidget;
 use helpers::TAB_ACTIVE;
+use logs::LogsWidget;
+use overview::OverviewWidget;
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -45,18 +50,51 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     draw_tab_bar(frame, app, outer[0]);
 
     match app.tab {
-        Tab::Overview => overview::draw_overview(frame, app, outer[1]),
-        Tab::Logs => logs::draw_logs(frame, app, outer[1]),
-        Tab::CrashReports => crashes::draw_crash_reports(frame, app, outer[1]),
+        Tab::Overview => {
+            OverviewWidget {
+                report: &app.report,
+                total_log_lines: app.total_log_lines,
+                all_entries: &app.all_entries,
+                input_mode: app.input_mode,
+                tab: app.tab,
+                copied_at: app.copied_at,
+                copied_count: app.copied_count,
+            }
+            .render(outer[1], frame.buffer_mut(), &mut app.overview);
+        }
+        Tab::Logs => {
+            LogsWidget {
+                all_entries: &app.all_entries,
+                input_mode: app.input_mode,
+                copied_at: app.copied_at,
+                copied_count: app.copied_count,
+            }
+            .render(outer[1], frame.buffer_mut(), &mut app.logs);
+
+            // Handle search bar cursor position (can't be done from StatefulWidget::render).
+            if let Some((x, y)) = app.logs.search_cursor_position {
+                frame.set_cursor_position((x, y));
+            }
+        }
+        Tab::CrashReports => {
+            CrashReportsWidget {
+                report: &app.report,
+                all_entries: &app.all_entries,
+                tab: app.tab,
+                copied_at: app.copied_at,
+                copied_count: app.copied_count,
+            }
+            .render(outer[1], frame.buffer_mut(), &mut app.crashes);
+        }
     }
 
     draw_status_bar(frame, app, outer[2]);
 
-    if app.show_source_picker {
+    if app.logs.show_source_picker {
         popups::draw_source_picker(frame, app, size);
     }
 
-    if app.show_log_file_picker {
+    if app.logs.show_log_file_picker {
         popups::draw_log_file_picker(frame, app, size);
     }
 
@@ -70,7 +108,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 // ---------------------------------------------------------------------------
 
 fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let titles: Vec<Line> = Tab::ALL
+    let titles = Tab::ALL
         .iter()
         .map(|t| {
             let num = match t {
@@ -83,7 +121,7 @@ fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 Span::styled(format!("{} ", t.title()), Style::default().fg(Color::White)),
             ])
         })
-        .collect();
+        .collect::<Vec<_>>();
 
     let selected = Tab::ALL.iter().position(|t| *t == app.tab).unwrap_or(0);
 
@@ -110,9 +148,9 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         InputMode::Select => " VISUAL ",
         InputMode::Normal => match app.tab {
             Tab::Overview => " OVERVIEW ",
-            Tab::Logs if app.show_log_detail => " LOG DETAIL ",
+            Tab::Logs if app.logs.show_detail => " LOG DETAIL ",
             Tab::Logs => " LOG LIST ",
-            Tab::CrashReports if app.detail_focused => " CRASH DETAIL ",
+            Tab::CrashReports if app.crashes.detail_focused => " CRASH DETAIL ",
             Tab::CrashReports => " CRASH LIST ",
         },
     };

@@ -3,17 +3,19 @@
 //! These methods live in their own module to keep the main `App` impl focused
 //! on construction and high-level dispatch.
 
-use super::App;
-use super::state::{ContainerStateExt, Tab};
+use super::{
+    App,
+    state::{ContainerStateExt, Tab},
+};
 
 /// Clamp `scroll` so that `cursor` is visible within a viewport of `viewport_h` rows.
 pub(crate) fn ensure_cursor_visible(cursor: usize, scroll: &mut u16, viewport_h: u16) {
-    let s = *scroll as usize;
-    let h = viewport_h as usize;
-    if cursor < s {
+    let scroll_usize = *scroll as usize;
+    let horizontal = viewport_h as usize;
+    if cursor < scroll_usize {
         *scroll = cursor as u16;
-    } else if h > 0 && cursor >= s + h {
-        *scroll = (cursor - h + 1) as u16;
+    } else if horizontal > 0 && cursor >= scroll_usize + horizontal {
+        *scroll = (cursor - horizontal + 1) as u16;
     }
 }
 
@@ -25,33 +27,33 @@ impl App {
     pub(crate) fn navigate_up(&mut self) {
         match self.tab {
             Tab::Overview => {
-                if self.overview_cursor > 0 {
-                    self.overview_cursor -= 1;
-                    self.ensure_overview_cursor_visible();
+                if self.overview.cursor > 0 {
+                    self.overview.cursor -= 1;
+                    self.overview.ensure_cursor_visible();
                 }
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    if self.detail_cursor > 0 {
-                        self.detail_cursor -= 1;
-                        self.ensure_detail_cursor_visible();
+                if self.logs.show_detail && self.logs.detail_focused {
+                    if self.logs.detail_cursor > 0 {
+                        self.logs.detail_cursor -= 1;
+                        self.logs.ensure_detail_cursor_visible();
                     }
                 } else {
-                    self.log_list_state.up();
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    self.logs.list_state.up();
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    if self.crash_detail_cursor > 0 {
-                        self.crash_detail_cursor -= 1;
-                        self.ensure_crash_detail_cursor_visible();
+                if self.crashes.detail_focused {
+                    if self.crashes.detail_cursor > 0 {
+                        self.crashes.detail_cursor -= 1;
+                        self.crashes.ensure_detail_cursor_visible();
                     }
                 } else {
-                    self.crash_list_state.up();
-                    self.crash_detail_scroll = 0;
-                    self.crash_detail_cursor = 0;
+                    self.crashes.list_state.up();
+                    self.crashes.detail_scroll = 0;
+                    self.crashes.detail_cursor = 0;
                 }
             }
         }
@@ -60,38 +62,39 @@ impl App {
     pub(crate) fn navigate_down(&mut self) {
         match self.tab {
             Tab::Overview => {
-                if self.overview_line_count > 0
-                    && self.overview_cursor + 1 < self.overview_line_count
+                if self.overview.line_count > 0
+                    && self.overview.cursor + 1 < self.overview.line_count
                 {
-                    self.overview_cursor += 1;
-                    self.ensure_overview_cursor_visible();
+                    self.overview.cursor += 1;
+                    self.overview.ensure_cursor_visible();
                 }
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    if self.detail_line_count > 0 && self.detail_cursor + 1 < self.detail_line_count
+                if self.logs.show_detail && self.logs.detail_focused {
+                    if self.logs.detail_line_count > 0
+                        && self.logs.detail_cursor + 1 < self.logs.detail_line_count
                     {
-                        self.detail_cursor += 1;
-                        self.ensure_detail_cursor_visible();
+                        self.logs.detail_cursor += 1;
+                        self.logs.ensure_detail_cursor_visible();
                     }
                 } else {
-                    self.log_list_state.down();
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    self.logs.list_state.down();
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    if self.crash_detail_line_count > 0
-                        && self.crash_detail_cursor + 1 < self.crash_detail_line_count
+                if self.crashes.detail_focused {
+                    if self.crashes.detail_line_count > 0
+                        && self.crashes.detail_cursor + 1 < self.crashes.detail_line_count
                     {
-                        self.crash_detail_cursor += 1;
-                        self.ensure_crash_detail_cursor_visible();
+                        self.crashes.detail_cursor += 1;
+                        self.crashes.ensure_detail_cursor_visible();
                     }
                 } else {
-                    self.crash_list_state.down();
-                    self.crash_detail_scroll = 0;
-                    self.crash_detail_cursor = 0;
+                    self.crashes.list_state.down();
+                    self.crashes.detail_scroll = 0;
+                    self.crashes.detail_cursor = 0;
                 }
             }
         }
@@ -100,32 +103,32 @@ impl App {
     pub(crate) fn navigate_page_up(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let page = self.viewport.overview as usize;
-                self.overview_cursor = self.overview_cursor.saturating_sub(page);
-                self.ensure_overview_cursor_visible();
+                let page = self.overview.viewport_height as usize;
+                self.overview.cursor = self.overview.cursor.saturating_sub(page);
+                self.overview.ensure_cursor_visible();
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    let page = self.viewport.log_detail as usize;
-                    self.detail_cursor = self.detail_cursor.saturating_sub(page);
-                    self.ensure_detail_cursor_visible();
+                if self.logs.show_detail && self.logs.detail_focused {
+                    let page = self.logs.detail_viewport_height as usize;
+                    self.logs.detail_cursor = self.logs.detail_cursor.saturating_sub(page);
+                    self.logs.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.log_list;
-                    self.log_list_state.page_up(page);
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    let page = self.logs.list_viewport_height;
+                    self.logs.list_state.page_up(page);
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    let page = self.viewport.crash_detail as usize;
-                    self.crash_detail_cursor = self.crash_detail_cursor.saturating_sub(page);
-                    self.ensure_crash_detail_cursor_visible();
+                if self.crashes.detail_focused {
+                    let page = self.crashes.detail_viewport_height as usize;
+                    self.crashes.detail_cursor = self.crashes.detail_cursor.saturating_sub(page);
+                    self.crashes.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.crash_list;
-                    self.crash_list_state.page_up(page);
-                    self.crash_detail_scroll = 0;
-                    self.crash_detail_cursor = 0;
+                    let page = self.crashes.list_viewport_height;
+                    self.crashes.list_state.page_up(page);
+                    self.crashes.detail_scroll = 0;
+                    self.crashes.detail_cursor = 0;
                 }
             }
         }
@@ -134,40 +137,40 @@ impl App {
     pub(crate) fn navigate_page_down(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let page = self.viewport.overview as usize;
-                if self.overview_line_count > 0 {
-                    self.overview_cursor =
-                        (self.overview_cursor + page).min(self.overview_line_count - 1);
+                let page = self.overview.viewport_height as usize;
+                if self.overview.line_count > 0 {
+                    self.overview.cursor =
+                        (self.overview.cursor + page).min(self.overview.line_count - 1);
                 }
-                self.ensure_overview_cursor_visible();
+                self.overview.ensure_cursor_visible();
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    let page = self.viewport.log_detail;
-                    if self.detail_line_count > 0 {
-                        self.detail_cursor =
-                            (self.detail_cursor + page as usize).min(self.detail_line_count - 1);
+                if self.logs.show_detail && self.logs.detail_focused {
+                    let page = self.logs.detail_viewport_height;
+                    if self.logs.detail_line_count > 0 {
+                        self.logs.detail_cursor = (self.logs.detail_cursor + page as usize)
+                            .min(self.logs.detail_line_count - 1);
                     }
-                    self.ensure_detail_cursor_visible();
+                    self.logs.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.log_list;
-                    self.log_list_state.page_down(page);
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    let page = self.logs.list_viewport_height;
+                    self.logs.list_state.page_down(page);
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    let page = self.viewport.crash_detail as usize;
-                    if self.crash_detail_line_count > 0 {
-                        self.crash_detail_cursor =
-                            (self.crash_detail_cursor + page).min(self.crash_detail_line_count - 1);
+                if self.crashes.detail_focused {
+                    let page = self.crashes.detail_viewport_height as usize;
+                    if self.crashes.detail_line_count > 0 {
+                        self.crashes.detail_cursor = (self.crashes.detail_cursor + page)
+                            .min(self.crashes.detail_line_count - 1);
                     }
-                    self.ensure_crash_detail_cursor_visible();
+                    self.crashes.ensure_detail_cursor_visible();
                 } else {
-                    let page = self.viewport.crash_list;
-                    self.crash_list_state.page_down(page);
-                    self.crash_detail_scroll = 0;
+                    let page = self.crashes.list_viewport_height;
+                    self.crashes.list_state.page_down(page);
+                    self.crashes.detail_scroll = 0;
                 }
             }
         }
@@ -176,27 +179,27 @@ impl App {
     pub(crate) fn navigate_home(&mut self) {
         match self.tab {
             Tab::Overview => {
-                self.overview_cursor = 0;
-                self.ensure_overview_cursor_visible();
+                self.overview.cursor = 0;
+                self.overview.ensure_cursor_visible();
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    self.detail_cursor = 0;
-                    self.ensure_detail_cursor_visible();
+                if self.logs.show_detail && self.logs.detail_focused {
+                    self.logs.detail_cursor = 0;
+                    self.logs.ensure_detail_cursor_visible();
                 } else {
-                    self.log_list_state.home();
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    self.logs.list_state.home();
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    self.crash_detail_cursor = 0;
-                    self.ensure_crash_detail_cursor_visible();
+                if self.crashes.detail_focused {
+                    self.crashes.detail_cursor = 0;
+                    self.crashes.ensure_detail_cursor_visible();
                 } else {
-                    self.crash_list_state.home();
-                    self.crash_detail_scroll = 0;
-                    self.crash_detail_cursor = 0;
+                    self.crashes.list_state.home();
+                    self.crashes.detail_scroll = 0;
+                    self.crashes.detail_cursor = 0;
                 }
             }
         }
@@ -205,32 +208,32 @@ impl App {
     pub(crate) fn navigate_end(&mut self) {
         match self.tab {
             Tab::Overview => {
-                if self.overview_line_count > 0 {
-                    self.overview_cursor = self.overview_line_count - 1;
+                if self.overview.line_count > 0 {
+                    self.overview.cursor = self.overview.line_count - 1;
                 }
-                self.ensure_overview_cursor_visible();
+                self.overview.ensure_cursor_visible();
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    if self.detail_line_count > 0 {
-                        self.detail_cursor = self.detail_line_count - 1;
+                if self.logs.show_detail && self.logs.detail_focused {
+                    if self.logs.detail_line_count > 0 {
+                        self.logs.detail_cursor = self.logs.detail_line_count - 1;
                     }
-                    self.ensure_detail_cursor_visible();
+                    self.logs.ensure_detail_cursor_visible();
                 } else {
-                    self.log_list_state.end();
-                    self.detail_scroll = 0;
-                    self.detail_cursor = 0;
+                    self.logs.list_state.end();
+                    self.logs.detail_scroll = 0;
+                    self.logs.detail_cursor = 0;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    if self.crash_detail_line_count > 0 {
-                        self.crash_detail_cursor = self.crash_detail_line_count - 1;
+                if self.crashes.detail_focused {
+                    if self.crashes.detail_line_count > 0 {
+                        self.crashes.detail_cursor = self.crashes.detail_line_count - 1;
                     }
-                    self.ensure_crash_detail_cursor_visible();
+                    self.crashes.ensure_detail_cursor_visible();
                 } else {
-                    self.crash_list_state.end();
-                    self.crash_detail_scroll = 0;
+                    self.crashes.list_state.end();
+                    self.crashes.detail_scroll = 0;
                 }
             }
         }
@@ -245,27 +248,28 @@ impl App {
     pub(crate) fn scroll_cursor_center(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let half = (self.viewport.overview as usize) / 2;
-                self.overview_scroll = self.overview_cursor.saturating_sub(half) as u16;
+                let half = (self.overview.viewport_height as usize) / 2;
+                self.overview.scroll = self.overview.cursor.saturating_sub(half) as u16;
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    let half = (self.viewport.log_detail as usize) / 2;
-                    self.detail_scroll = self.detail_cursor.saturating_sub(half) as u16;
+                if self.logs.show_detail && self.logs.detail_focused {
+                    let half = (self.logs.detail_viewport_height as usize) / 2;
+                    self.logs.detail_scroll = self.logs.detail_cursor.saturating_sub(half) as u16;
                 } else {
-                    let half = (self.viewport.log_list as usize) / 2;
-                    let selected = self.log_list_state.selected().unwrap_or_default();
-                    *self.log_list_state.offset_mut() = selected.saturating_sub(half);
+                    let half = (self.logs.list_viewport_height as usize) / 2;
+                    let selected = self.logs.list_state.selected().unwrap_or_default();
+                    *self.logs.list_state.offset_mut() = selected.saturating_sub(half);
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    let half = (self.viewport.crash_detail as usize) / 2;
-                    self.crash_detail_scroll = self.crash_detail_cursor.saturating_sub(half) as u16;
+                if self.crashes.detail_focused {
+                    let half = (self.crashes.detail_viewport_height as usize) / 2;
+                    self.crashes.detail_scroll =
+                        self.crashes.detail_cursor.saturating_sub(half) as u16;
                 } else {
-                    let half = (self.viewport.crash_list as usize) / 2;
-                    let selected = self.crash_list_state.selected().unwrap_or_default();
-                    *self.crash_list_state.offset_mut() = selected.saturating_sub(half);
+                    let half = (self.crashes.list_viewport_height as usize) / 2;
+                    let selected = self.crashes.list_state.selected().unwrap_or_default();
+                    *self.crashes.list_state.offset_mut() = selected.saturating_sub(half);
                 }
             }
         }
@@ -275,22 +279,22 @@ impl App {
     pub(crate) fn scroll_cursor_top(&mut self) {
         match self.tab {
             Tab::Overview => {
-                self.overview_scroll = self.overview_cursor as u16;
+                self.overview.scroll = self.overview.cursor as u16;
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    self.detail_scroll = self.detail_cursor as u16;
+                if self.logs.show_detail && self.logs.detail_focused {
+                    self.logs.detail_scroll = self.logs.detail_cursor as u16;
                 } else {
-                    let selected = self.log_list_state.selected().unwrap_or_default();
-                    *self.log_list_state.offset_mut() = selected;
+                    let selected = self.logs.list_state.selected().unwrap_or_default();
+                    *self.logs.list_state.offset_mut() = selected;
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    self.crash_detail_scroll = self.crash_detail_cursor as u16;
+                if self.crashes.detail_focused {
+                    self.crashes.detail_scroll = self.crashes.detail_cursor as u16;
                 } else {
-                    let selected = self.crash_list_state.selected().unwrap_or(0);
-                    *self.crash_list_state.offset_mut() = selected;
+                    let selected = self.crashes.list_state.selected().unwrap_or(0);
+                    *self.crashes.list_state.offset_mut() = selected;
                 }
             }
         }
@@ -300,59 +304,32 @@ impl App {
     pub(crate) fn scroll_cursor_bottom(&mut self) {
         match self.tab {
             Tab::Overview => {
-                let height = self.viewport.overview as usize;
-                self.overview_scroll = (self.overview_cursor + 1).saturating_sub(height) as u16;
+                let height = self.overview.viewport_height as usize;
+                self.overview.scroll = (self.overview.cursor + 1).saturating_sub(height) as u16;
             }
             Tab::Logs => {
-                if self.show_log_detail && self.detail_focused {
-                    let height = self.viewport.log_detail as usize;
-                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(height) as u16;
+                if self.logs.show_detail && self.logs.detail_focused {
+                    let height = self.logs.detail_viewport_height as usize;
+                    self.logs.detail_scroll =
+                        (self.logs.detail_cursor + 1).saturating_sub(height) as u16;
                 } else {
-                    let height = self.viewport.log_list as usize;
-                    let selected = self.log_list_state.selected().unwrap_or_default();
-                    *self.log_list_state.offset_mut() = (selected + 1).saturating_sub(height);
+                    let height = self.logs.list_viewport_height as usize;
+                    let selected = self.logs.list_state.selected().unwrap_or_default();
+                    *self.logs.list_state.offset_mut() = (selected + 1).saturating_sub(height);
                 }
             }
             Tab::CrashReports => {
-                if self.detail_focused {
-                    let height = self.viewport.crash_detail as usize;
-                    self.crash_detail_scroll =
-                        (self.crash_detail_cursor + 1).saturating_sub(height) as u16;
+                if self.crashes.detail_focused {
+                    let height = self.crashes.detail_viewport_height as usize;
+                    self.crashes.detail_scroll =
+                        (self.crashes.detail_cursor + 1).saturating_sub(height) as u16;
                 } else {
-                    let height = self.viewport.crash_list as usize;
-                    let selected = self.crash_list_state.selected().unwrap_or_default();
-                    *self.crash_list_state.offset_mut() = (selected + 1).saturating_sub(height);
+                    let height = self.crashes.list_viewport_height as usize;
+                    let selected = self.crashes.list_state.selected().unwrap_or_default();
+                    *self.crashes.list_state.offset_mut() = (selected + 1).saturating_sub(height);
                 }
             }
         }
-    }
-
-    // -----------------------------------------------------------------------
-    // Cursor visibility helpers
-    // -----------------------------------------------------------------------
-
-    pub(crate) fn ensure_overview_cursor_visible(&mut self) {
-        ensure_cursor_visible(
-            self.overview_cursor,
-            &mut self.overview_scroll,
-            self.viewport.overview,
-        );
-    }
-
-    pub(crate) fn ensure_detail_cursor_visible(&mut self) {
-        ensure_cursor_visible(
-            self.detail_cursor,
-            &mut self.detail_scroll,
-            self.viewport.log_detail,
-        );
-    }
-
-    pub(crate) fn ensure_crash_detail_cursor_visible(&mut self) {
-        ensure_cursor_visible(
-            self.crash_detail_cursor,
-            &mut self.crash_detail_scroll,
-            self.viewport.crash_detail,
-        );
     }
 
     // -----------------------------------------------------------------------
@@ -368,17 +345,17 @@ impl App {
         }
 
         // Scroll inside the source picker when it is open.
-        if self.show_source_picker {
-            if self.source_picker_selected > 0 {
-                self.source_picker_selected -= 1;
+        if self.logs.show_source_picker {
+            if self.logs.source_picker_selected > 0 {
+                self.logs.source_picker_selected -= 1;
             }
             return;
         }
 
         // Scroll inside the log file picker when it is open.
-        if self.show_log_file_picker {
-            if self.log_file_picker_selected > 0 {
-                self.log_file_picker_selected -= 1;
+        if self.logs.show_log_file_picker {
+            if self.logs.log_file_picker_selected > 0 {
+                self.logs.log_file_picker_selected -= 1;
             }
             return;
         }
@@ -398,19 +375,19 @@ impl App {
         }
 
         // Scroll inside the source picker when it is open.
-        if self.show_source_picker {
-            let total = 1 + self.source_filter.available.len();
-            if self.source_picker_selected + 1 < total {
-                self.source_picker_selected += 1;
+        if self.logs.show_source_picker {
+            let total = 1 + self.logs.source_filter.available.len();
+            if self.logs.source_picker_selected + 1 < total {
+                self.logs.source_picker_selected += 1;
             }
             return;
         }
 
         // Scroll inside the log file picker when it is open.
-        if self.show_log_file_picker {
-            let total = 1 + self.log_file_filter.available.len();
-            if self.log_file_picker_selected + 1 < total {
-                self.log_file_picker_selected += 1;
+        if self.logs.show_log_file_picker {
+            let total = 1 + self.logs.log_file_filter.available.len();
+            if self.logs.log_file_picker_selected + 1 < total {
+                self.logs.log_file_picker_selected += 1;
             }
             return;
         }
@@ -426,7 +403,6 @@ impl App {
     // -----------------------------------------------------------------------
 
     pub(crate) fn tab_nav_keys(&self) -> bool {
-        // Prevent Right arrow from being interpreted as tab-switch on Logs/Crashes.
         true
     }
 }

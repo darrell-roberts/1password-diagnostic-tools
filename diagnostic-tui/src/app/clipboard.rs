@@ -70,57 +70,18 @@ fn crash_report_plain_lines(
 
 impl App {
     // -----------------------------------------------------------------------
-    // Selection ranges
-    // -----------------------------------------------------------------------
-
-    /// Returns the ordered (start, end) selection range for the Overview tab if in select mode.
-    pub fn overview_selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.overview_select_anchor?;
-        let cursor = self.overview_cursor;
-        Some((anchor.min(cursor), anchor.max(cursor)))
-    }
-
-    /// Returns the ordered (start, end) selection range for the Logs tab if in select mode.
-    pub fn selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.select_anchor?;
-        let cursor = self.log_list_state.selected();
-        cursor.map(|selected| (anchor.min(selected), anchor.max(selected)))
-    }
-
-    /// Returns the ordered (start, end) selection range for the Crash list if in select mode.
-    pub fn crash_selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.crash_select_anchor?;
-        let cursor = self.crash_list_state.selected()?;
-        Some((anchor.min(cursor), anchor.max(cursor)))
-    }
-
-    /// Returns the ordered (start, end) selection range for the log detail if in select mode.
-    pub fn detail_selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.detail_select_anchor?;
-        let cursor = self.detail_cursor;
-        Some((anchor.min(cursor), anchor.max(cursor)))
-    }
-
-    /// Returns the ordered (start, end) selection range for the crash detail if in select mode.
-    pub fn crash_detail_selection_range(&self) -> Option<(usize, usize)> {
-        let anchor = self.crash_detail_select_anchor?;
-        let cursor = self.crash_detail_cursor;
-        Some((anchor.min(cursor), anchor.max(cursor)))
-    }
-
-    // -----------------------------------------------------------------------
     // Copy: log list
     // -----------------------------------------------------------------------
 
     /// Copy the selected log entries to the system clipboard.
     pub(super) fn copy_selection(&mut self) {
-        let Some((start, end)) = self.selection_range() else {
+        let Some((start, end)) = self.logs.selection_range() else {
             return;
         };
 
         let count = end - start + 1;
         let text: String = (start..=end)
-            .filter_map(|i| self.filtered_indices.get(i).copied())
+            .filter_map(|i| self.logs.filtered_indices.get(i).copied())
             .filter_map(|idx| self.all_entries.get(idx))
             .map(|entry| {
                 let mut line = format!(
@@ -147,7 +108,7 @@ impl App {
         }
 
         // Exit select mode.
-        self.select_anchor = None;
+        self.logs.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
 
@@ -157,7 +118,7 @@ impl App {
 
     /// Copy the selected detail lines to the system clipboard.
     pub(super) fn copy_detail_selection(&mut self) {
-        let Some((start, end)) = self.detail_selection_range() else {
+        let Some((start, end)) = self.logs.detail_selection_range() else {
             return;
         };
 
@@ -174,8 +135,8 @@ impl App {
         }
 
         // Exit detail select mode.
-        self.detail_select_anchor = None;
-        self.detail_selecting = false;
+        self.logs.detail_select_anchor = None;
+        self.logs.detail_selecting = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -240,11 +201,11 @@ impl App {
 
     /// Copy the selected crash reports to the system clipboard.
     pub(super) fn copy_crash_selection(&mut self) {
-        let (start, end) = match self.crash_selection_range() {
+        let (start, end) = match self.crashes.selection_range() {
             Some(range) => range,
             None => {
                 // Single-entry copy when no visual selection is active.
-                let idx = self.crash_list_state.selected().unwrap_or_default();
+                let idx = self.crashes.list_state.selected().unwrap_or_default();
                 (idx, idx)
             }
         };
@@ -267,7 +228,7 @@ impl App {
         }
 
         // Exit select mode.
-        self.crash_select_anchor = None;
+        self.crashes.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
 
@@ -277,12 +238,13 @@ impl App {
 
     /// Copy the selected crash detail lines to the system clipboard.
     pub(super) fn copy_crash_detail_selection(&mut self) {
-        let Some((start, end)) = self.crash_detail_selection_range() else {
+        let Some((start, end)) = self.crashes.detail_selection_range() else {
             return;
         };
 
         let lines = self
-            .crash_detail_plain_cache
+            .crashes
+            .detail_plain_cache
             .clone()
             .unwrap_or_else(|| self.build_crash_detail_plain_lines());
         let clamped_end = end.min(lines.len().saturating_sub(1));
@@ -296,8 +258,8 @@ impl App {
             self.copied_count = count;
         }
 
-        self.crash_detail_select_anchor = None;
-        self.crash_detail_selecting = false;
+        self.crashes.detail_select_anchor = None;
+        self.crashes.detail_selecting = false;
         self.input_mode = InputMode::Normal;
     }
 
@@ -316,7 +278,7 @@ impl App {
 
     /// Copy the selected overview lines to the system clipboard.
     pub(super) fn copy_overview_selection(&mut self) {
-        let Some((start, end)) = self.overview_selection_range() else {
+        let Some((start, end)) = self.overview.selection_range() else {
             return;
         };
 
@@ -331,7 +293,7 @@ impl App {
         }
 
         // Exit select mode.
-        self.overview_select_anchor = None;
+        self.overview.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
 

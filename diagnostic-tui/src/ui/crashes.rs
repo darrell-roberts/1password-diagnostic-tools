@@ -1,64 +1,101 @@
 //! Rendering logic for the Crash Reports tab: crash list and crash detail pane.
 
 use crate::{
-    app::{App, Tab},
+    app::{CrashReportsState, Tab},
     ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG},
 };
 use chrono::Local;
+use diagnostic_parser::{
+    log_entry::LogEntry,
+    model::{CrashReportEntry, DiagnosticReport},
+};
 use ratatui::{
-    Frame,
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, Paragraph, Row, StatefulWidget, Table, Widget as _, Wrap},
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-/// Draw the entire Crash Reports tab content into the given area.
-pub fn draw_crash_reports(frame: &mut Frame, app: &mut App, area: Rect) {
-    if app.report.crash_report_entries.is_empty() {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(BORDER_FOCUSED))
-            .title(" Crash Reports ");
+/// Widget for the Crash Reports tab, holding borrowed immutable data.
+pub struct CrashReportsWidget<'a> {
+    pub report: &'a DiagnosticReport,
+    pub all_entries: &'a [LogEntry],
+    pub tab: Tab,
+    pub copied_at: Option<Instant>,
+    pub copied_count: usize,
+}
 
-        let msg = Paragraph::new("No crash reports in this diagnostic file.")
-            .style(Style::default().fg(Color::DarkGray))
-            .block(block)
-            .alignment(Alignment::Center);
+impl StatefulWidget for CrashReportsWidget<'_> {
+    type State = CrashReportsState;
 
-        frame.render_widget(msg, area);
-        return;
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut CrashReportsState) {
+        if self.report.crash_report_entries.is_empty() {
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(BORDER_FOCUSED))
+                .title(" Crash Reports ");
+
+            Paragraph::new("No crash reports in this diagnostic file.")
+                .style(Style::default().fg(Color::DarkGray))
+                .block(block)
+                .alignment(Alignment::Center)
+                .render(area, buf);
+            return;
+        }
+
+        let horizontal = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+            .split(area);
+
+        render_crash_list(
+            state,
+            &self.report.crash_report_entries,
+            self.tab,
+            self.copied_at,
+            self.copied_count,
+            horizontal[0],
+            buf,
+        );
+        render_crash_detail(
+            state,
+            &self.report.crash_report_entries,
+            self.all_entries,
+            self.copied_at,
+            self.copied_count,
+            horizontal[1],
+            buf,
+        );
     }
-
-    let horizontal = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(area);
-
-    draw_crash_list(frame, app, horizontal[0]);
-    draw_crash_detail(frame, app, horizontal[1]);
 }
 
 // ---------------------------------------------------------------------------
 // Crash list
 // ---------------------------------------------------------------------------
 
-fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = if !app.detail_focused {
+fn render_crash_list(
+    state: &mut CrashReportsState,
+    crash_entries: &[CrashReportEntry],
+    tab: Tab,
+    copied_at: Option<Instant>,
+    copied_count: usize,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let border_color = if !state.detail_focused {
         BORDER_FOCUSED
     } else {
         BORDER_NORMAL
     };
 
     let inner_height = area.height.saturating_sub(2) as usize;
-    app.viewport.crash_list = inner_height as u16;
+    state.list_viewport_height = inner_height as u16;
 
-    let crash_selection_range = app.crash_selection_range();
+    let crash_selection_range = state.selection_range();
 
-    let items = app
-        .report
-        .crash_report_entries
+    let items: Vec<Row> = crash_entries
         .iter()
         .enumerate()
         .map(|(idx, crash)| {
@@ -89,37 +126,35 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
             Row::new([type_span, ts_span, id_span]).style(style)
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    let show_copied = app.tab == Tab::CrashReports
-        && app
-            .copied_at
-            .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let show_copied =
+        tab == Tab::CrashReports && copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied {
-        let count = app.copied_count;
-        format!(" Crashes — Copied {count} entries! ✓ ")
+        format!(" Crashes — Copied {copied_count} entries! ✓ ")
     } else if let Some((start, end)) = crash_selection_range {
         let count = end - start + 1;
         format!(
             " Crashes [{}/{}] — {} selected (y:copy  Esc:cancel) ",
-            if app.report.crash_report_entries.is_empty() {
+            if crash_entries.is_empty() {
                 0
             } else {
-                app.crash_list_state.selected().map(|i| i + 1).unwrap_or(1)
+                state.list_state.selected().map(|i| i + 1).unwrap_or(1)
             },
-            app.report.crash_report_entries.len(),
+            crash_entries.len(),
             count,
         )
     } else {
         format!(
             " Crashes [{}/{}] ",
-            app.crash_list_state
+            state
+                .list_state
                 .selected()
                 .unwrap_or_default()
-                .clamp(0, app.report.crash_report_entries.len() - 1)
+                .clamp(0, crash_entries.len() - 1)
                 + 1,
-            app.report.crash_report_entries.len(),
+            crash_entries.len(),
         )
     };
 
@@ -148,60 +183,57 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
         )
         .row_highlight_style(Style::new().reversed());
 
-    frame.render_stateful_widget(list, area, &mut app.crash_list_state);
+    StatefulWidget::render(list, area, buf, &mut state.list_state);
 }
 
 // ---------------------------------------------------------------------------
 // Crash detail pane
 // ---------------------------------------------------------------------------
 
-fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = if app.detail_focused {
+fn render_crash_detail(
+    state: &mut CrashReportsState,
+    crash_entries: &[CrashReportEntry],
+    all_entries: &[LogEntry],
+    copied_at: Option<Instant>,
+    copied_count: usize,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let border_color = if state.detail_focused {
         BORDER_FOCUSED
     } else {
         BORDER_NORMAL
     };
 
-    // Clone data from crash report and optional panic entry to avoid borrow conflicts.
-    let crash_data = app.selected_crash_report().map(|crash| {
-        let ts = crash
-            .timestamp_utc()
-            .map(|d| {
-                d.with_timezone(&Local)
-                    .format("%Y-%m-%d %H:%M:%S")
-                    .to_string()
-            })
-            .unwrap_or_else(|| format!("{}", crash.timestamp));
-        (
-            crash.report_id.clone(),
-            crash.report_type.clone(),
-            ts,
-            crash.diagnostic_report_tag.clone(),
-        )
-    });
+    // Get selected crash data.
+    let crash_data = state
+        .list_state
+        .selected()
+        .and_then(|sel| crash_entries.get(sel))
+        .map(|crash| {
+            let ts = crash
+                .timestamp_utc()
+                .map(|d| {
+                    d.with_timezone(&Local)
+                        .format("%Y-%m-%d %H:%M:%S")
+                        .to_string()
+                })
+                .unwrap_or_else(|| format!("{}", crash.timestamp));
+            (
+                crash.report_id.clone(),
+                crash.report_type.clone(),
+                ts,
+                crash.diagnostic_report_tag.clone(),
+                crash.find_panic_entry(all_entries),
+            )
+        });
 
-    let panic_data = app.selected_crash_panic_entry().map(|entry| {
-        (
-            entry.log_file_title.clone(),
-            entry.thread.clone(),
-            entry.source.raw().into_owned(),
-            entry.timestamp.with_timezone(&Local).to_string(),
-            entry.message.clone(),
-            entry.has_continuation(),
-            entry.continuation.clone(),
-        )
-    });
+    let show_copied = copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let detail_sel = state.detail_selection_range();
 
-    // Build title with selection / copied feedback.
-    let show_copied = app
-        .copied_at
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
-    let detail_sel = app.crash_detail_selection_range();
-
-    let (detail_title, detail_title_style) = if show_copied && app.detail_focused {
-        let count = app.copied_count;
+    let (detail_title, detail_title_style) = if show_copied && state.detail_focused {
         (
-            format!(" Crash Detail — Copied {count} lines! ✓ "),
+            format!(" Crash Detail — Copied {copied_count} lines! ✓ "),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),
@@ -212,7 +244,7 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
             format!(" Crash Detail — {} selected (y:copy  Esc:cancel) ", count),
             Style::default().fg(Color::Yellow),
         )
-    } else if app.detail_focused {
+    } else if state.detail_focused {
         (" Crash Detail (focused) ".to_string(), Style::default())
     } else {
         (" Crash Detail ".to_string(), Style::default())
@@ -223,11 +255,11 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         .border_style(Style::default().fg(border_color))
         .title(Span::styled(detail_title, detail_title_style));
 
-    let Some((report_id, report_type, ts, tag)) = crash_data else {
-        let empty = Paragraph::new("No crash report selected")
+    let Some((report_id, report_type, ts, tag, panic_entry)) = crash_data else {
+        Paragraph::new("No crash report selected")
             .style(Style::default().fg(Color::DarkGray))
-            .block(block);
-        frame.render_widget(empty, area);
+            .block(block)
+            .render(area, buf);
         return;
     };
 
@@ -254,123 +286,127 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         Line::from(""),
     ];
 
-    match panic_data {
-        Some((
-            log_file_title,
-            thread,
-            source_raw,
-            timestamp,
-            message,
-            has_continuation,
-            continuation,
-        )) => {
-            lines.push(Line::from(Span::styled(
-                "Linked Panic Entry",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
-            )));
-            lines.push(Line::from(""));
+    if let Some(entry) = panic_entry {
+        lines.push(Line::from(Span::styled(
+            "Linked Panic Entry",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
+        )));
+        lines.push(Line::from(""));
 
-            lines.push(Line::from(vec![
-                Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
-                Span::raw(log_file_title),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
-                Span::raw(thread),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("Source:    ", Style::default().fg(Color::DarkGray)),
-                Span::styled(source_raw, Style::default().fg(Color::Magenta)),
-            ]));
-            lines.push(Line::from(vec![
-                Span::styled("Timestamp: ", Style::default().fg(Color::DarkGray)),
-                Span::raw(timestamp),
-            ]));
+        lines.push(Line::from(vec![
+            Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
+            Span::raw(entry.log_file_title.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
+            Span::raw(entry.thread.clone()),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Source:    ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                entry.source.raw().into_owned(),
+                Style::default().fg(Color::Magenta),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Timestamp: ", Style::default().fg(Color::DarkGray)),
+            Span::raw(entry.timestamp.with_timezone(&Local).to_string()),
+        ]));
 
-            lines.push(Line::from(""));
-            lines.push(Line::from(Span::styled(
-                "Message:",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )));
-            lines.push(Line::from(""));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Message:",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(""));
 
-            for msg_line in message.lines() {
-                lines.push(Line::from(Span::raw(msg_line.to_string())));
-            }
-
-            if has_continuation {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    format!("Call Stack ({} frames):", continuation.len()),
-                    Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
-                )));
-                lines.push(Line::from(""));
-
-                for (i, frame_line) in continuation.iter().enumerate() {
-                    let trimmed = frame_line.trim_start();
-                    // Alternate colors for readability.
-                    let fg = if i % 2 == 0 {
-                        Color::Yellow
-                    } else {
-                        Color::White
-                    };
-                    lines.push(Line::from(Span::styled(
-                        trimmed.to_string(),
-                        Style::default().fg(fg),
-                    )));
-                }
-            } else {
-                lines.push(Line::from(""));
-                lines.push(Line::from(Span::styled(
-                    "(no stack trace attached to panic entry)",
-                    Style::default().fg(Color::DarkGray),
-                )));
-            }
+        for msg_line in entry.message.lines() {
+            lines.push(Line::from(Span::raw(msg_line.to_string())));
         }
-        None => {
-            lines.push(Line::from(Span::styled(
-                "No matching panic log entry found.",
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            )));
+
+        if entry.has_continuation() {
             lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "The crash report could not be correlated with a panic log entry.",
-                Style::default().fg(Color::DarkGray),
+                format!("Call Stack ({} frames):", entry.continuation.len()),
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             )));
+            lines.push(Line::from(""));
+
+            for (i, frame_line) in entry.continuation.iter().enumerate() {
+                let trimmed = frame_line.trim_start();
+                let fg = if i % 2 == 0 {
+                    Color::Yellow
+                } else {
+                    Color::White
+                };
+                lines.push(Line::from(Span::styled(
+                    trimmed.to_string(),
+                    Style::default().fg(fg),
+                )));
+            }
+        } else {
+            lines.push(Line::from(""));
             lines.push(Line::from(Span::styled(
-                "This may happen if the log file has been rotated or the crash",
-                Style::default().fg(Color::DarkGray),
-            )));
-            lines.push(Line::from(Span::styled(
-                "occurred outside the captured log window.",
+                "(no stack trace attached to panic entry)",
                 Style::default().fg(Color::DarkGray),
             )));
         }
+    } else {
+        lines.push(Line::from(Span::styled(
+            "No matching panic log entry found.",
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::ITALIC),
+        )));
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "The crash report could not be correlated with a panic log entry.",
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(Span::styled(
+            "This may happen if the log file has been rotated or the crash",
+            Style::default().fg(Color::DarkGray),
+        )));
+        lines.push(Line::from(Span::styled(
+            "occurred outside the captured log window.",
+            Style::default().fg(Color::DarkGray),
+        )));
     }
 
-    // Track line count so the app can clamp cursor navigation.
     let total_lines = lines.len();
-    app.crash_detail_line_count = total_lines;
+    state.detail_line_count = total_lines;
 
-    // Cache plain-text lines so copy operations don't rebuild them.
-    app.crash_detail_plain_cache = Some(app.build_crash_detail_plain_lines());
-
-    // Clamp cursor.
-    if total_lines > 0 && app.crash_detail_cursor >= total_lines {
-        app.crash_detail_cursor = total_lines - 1;
+    // Build plain cache for copy operations.
+    if let Some(entry) = panic_entry {
+        let crash = state
+            .list_state
+            .selected()
+            .and_then(|sel| crash_entries.get(sel));
+        if let Some(crash) = crash {
+            state.detail_plain_cache = Some(crash_report_plain_lines(crash, Some(entry)));
+        }
+    } else {
+        let crash = state
+            .list_state
+            .selected()
+            .and_then(|sel| crash_entries.get(sel));
+        if let Some(crash) = crash {
+            state.detail_plain_cache = Some(crash_report_plain_lines(crash, None));
+        }
     }
 
-    // Apply cursor / selection highlighting when the detail pane is focused.
-    if app.detail_focused {
-        let selection_range = app.crash_detail_selection_range();
+    if total_lines > 0 && state.detail_cursor >= total_lines {
+        state.detail_cursor = total_lines - 1;
+    }
+
+    if state.detail_focused {
+        let selection_range = state.detail_selection_range();
         for (i, line) in lines.iter_mut().enumerate() {
-            let is_cursor = i == app.crash_detail_cursor;
+            let is_cursor = i == state.detail_cursor;
             let is_in_selection =
                 selection_range.is_some_and(|(start, end)| i >= start && i <= end);
 
@@ -397,18 +433,75 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // Clamp scroll.
     let inner_height = area.height.saturating_sub(2) as usize;
-    app.viewport.crash_detail = inner_height as u16;
+    state.detail_viewport_height = inner_height as u16;
     let max_scroll = lines.len().saturating_sub(inner_height);
-    if (app.crash_detail_scroll as usize) > max_scroll {
-        app.crash_detail_scroll = max_scroll as u16;
+    if (state.detail_scroll as usize) > max_scroll {
+        state.detail_scroll = max_scroll as u16;
     }
 
-    let paragraph = Paragraph::new(lines)
+    Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((app.crash_detail_scroll, 0));
+        .scroll((state.detail_scroll, 0))
+        .render(area, buf);
+}
 
-    frame.render_widget(paragraph, area);
+// ---------------------------------------------------------------------------
+// Plain-text builder (used for cache during render)
+// ---------------------------------------------------------------------------
+
+fn crash_report_plain_lines(
+    crash: &CrashReportEntry,
+    panic_entry: Option<&LogEntry>,
+) -> Vec<String> {
+    let ts = crash
+        .timestamp_utc()
+        .map(|d| {
+            d.with_timezone(&Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|| format!("{}", crash.timestamp));
+
+    let mut lines = vec![
+        format!("Report ID: {}", crash.report_id),
+        format!("Type:      {}", crash.report_type),
+        format!("Timestamp: {}", ts),
+        format!("Tag:       {}", crash.diagnostic_report_tag),
+        String::new(),
+    ];
+
+    if let Some(entry) = panic_entry {
+        lines.push("Linked Panic Entry".to_string());
+        lines.push(String::new());
+        lines.push(format!("Log File:  {}", entry.log_file_title));
+        lines.push(format!("Thread:    {}", entry.thread));
+        lines.push(format!("Source:    {}", entry.source.raw()));
+        lines.push(format!(
+            "Timestamp: {}",
+            entry.timestamp.with_timezone(&Local)
+        ));
+        lines.push(String::new());
+        lines.push("Message:".to_string());
+        lines.push(String::new());
+        for msg_line in entry.message.lines() {
+            lines.push(msg_line.to_string());
+        }
+        if entry.has_continuation() {
+            lines.push(String::new());
+            lines.push(format!("Call Stack ({} frames):", entry.continuation.len()));
+            lines.push(String::new());
+            for frame_line in &entry.continuation {
+                lines.push(frame_line.trim_start().to_string());
+            }
+        } else {
+            lines.push(String::new());
+            lines.push("(no stack trace attached to panic entry)".to_string());
+        }
+    } else {
+        lines.push("No matching panic log entry found.".to_string());
+    }
+
+    lines
 }
