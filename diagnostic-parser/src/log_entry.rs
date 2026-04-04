@@ -433,13 +433,11 @@ impl<'a> LogEntryRef<'a> {
         interner: &mut StringInterner,
     ) -> Vec<Self> {
         let title_arc = interner.intern(log_file_title);
-        let entries = parse_log_lines(
+        parse_log_lines(
             content,
             |line| Self::parse_line(&title_arc, line, interner),
             |entry, line| entry.continuation.push(line),
-        );
-
-        entries
+        )
     }
 
     /// Attempt to parse a single log line into a zero-copy [`LogEntryRef`].

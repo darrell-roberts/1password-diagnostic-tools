@@ -8,10 +8,13 @@ use std::time::Duration;
 
 use diagnostic_parser::log_entry::LogLevel;
 use ratatui::Frame;
+use ratatui::layout::Margin;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 
 /// Draw the Overview tab content into the given area.
 pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -288,10 +291,24 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
         app.overview_scroll = max_scroll as u16;
     }
 
+    let total_lines = app.overview_line_count;
+
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
         .scroll((app.overview_scroll, 0));
 
     frame.render_widget(paragraph, area);
+
+    let mut scrollbar_state = ScrollbarState::new(total_lines).position(app.overview_cursor);
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut scrollbar_state,
+    );
 }
