@@ -20,6 +20,7 @@ use ratatui::widgets::{
 pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute popup dimensions based on content.
     let max_source_len = app
+        .logs
         .source_filter
         .available
         .iter()
@@ -30,10 +31,10 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     let content_width = (max_source_len + 6).max(24) as u16;
     let popup_width = content_width.min(area.width.saturating_sub(4));
     // Height: 1 "All Sources" + N sources + 2 border rows + 1 hint row.
-    let item_count = 1 + app.source_filter.available.len();
+    let item_count = 1 + app.logs.source_filter.available.len();
     let popup_height = ((item_count + 4) as u16).min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
-    app.viewport.source_picker = popup_area.height.saturating_sub(2);
+    app.logs.source_picker_viewport_height = popup_area.height.saturating_sub(2);
 
     frame.render_widget(Clear, popup_area);
 
@@ -41,7 +42,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut items: Vec<ListItem> = Vec::with_capacity(item_count);
 
     // "All Sources" entry.
-    let all_style = if app.source_picker_selected == 0 {
+    let all_style = if app.logs.source_picker_selected == 0 {
         Style::default()
             .bg(HIGHLIGHT_BG)
             .fg(Color::White)
@@ -49,7 +50,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         Style::default().fg(Color::White)
     };
-    let all_prefix = if app.source_filter.selected.is_none() {
+    let all_prefix = if app.logs.source_filter.selected.is_none() {
         "● "
     } else {
         "  "
@@ -60,10 +61,10 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual source entries.
-    for (i, source) in app.source_filter.available.iter().enumerate() {
+    for (i, source) in app.logs.source_filter.available.iter().enumerate() {
         let picker_idx = i + 1;
-        let is_highlighted = app.source_picker_selected == picker_idx;
-        let is_active = app.source_filter.selected == Some(i);
+        let is_highlighted = app.logs.source_picker_selected == picker_idx;
+        let is_active = app.logs.source_filter.selected == Some(i);
 
         let style = if is_highlighted {
             Style::default()
@@ -96,7 +97,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 
     let mut list_state =
-        RatatuiListState::default().with_selected(Some(app.source_picker_selected));
+        RatatuiListState::default().with_selected(Some(app.logs.source_picker_selected));
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 
@@ -108,6 +109,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute popup dimensions based on content.
     let max_name_len = app
+        .logs
         .log_file_filter
         .available
         .iter()
@@ -118,10 +120,10 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     let content_width = (max_name_len + 6).max(24) as u16;
     let popup_width = content_width.min(area.width.saturating_sub(4));
     // Height: 1 "All Log Files" + N log files + 2 border rows + 1 hint row.
-    let item_count = 1 + app.log_file_filter.available.len();
+    let item_count = 1 + app.logs.log_file_filter.available.len();
     let popup_height = ((item_count + 4) as u16).min(area.height.saturating_sub(4));
     let popup_area = centered_rect(popup_width, popup_height, area);
-    app.viewport.log_file_picker = popup_area.height.saturating_sub(2);
+    app.logs.log_file_picker_viewport_height = popup_area.height.saturating_sub(2);
 
     frame.render_widget(Clear, popup_area);
 
@@ -129,7 +131,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     let mut items: Vec<ListItem> = Vec::with_capacity(item_count);
 
     // "All Log Files" entry.
-    let all_style = if app.log_file_picker_selected == 0 {
+    let all_style = if app.logs.log_file_picker_selected == 0 {
         Style::default()
             .bg(HIGHLIGHT_BG)
             .fg(Color::White)
@@ -137,7 +139,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     } else {
         Style::default().fg(Color::White)
     };
-    let all_prefix = if app.log_file_filter.selected.is_none() {
+    let all_prefix = if app.logs.log_file_filter.selected.is_none() {
         "● "
     } else {
         "  "
@@ -148,10 +150,10 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual log file entries.
-    for (i, log_file) in app.log_file_filter.available.iter().enumerate() {
+    for (i, log_file) in app.logs.log_file_filter.available.iter().enumerate() {
         let picker_idx = i + 1;
-        let is_highlighted = app.log_file_picker_selected == picker_idx;
-        let is_active = app.log_file_filter.selected == Some(i);
+        let is_highlighted = app.logs.log_file_picker_selected == picker_idx;
+        let is_active = app.logs.log_file_filter.selected == Some(i);
 
         let style = if is_highlighted {
             Style::default()
@@ -184,7 +186,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     );
 
     let mut list_state =
-        RatatuiListState::default().with_selected(Some(app.log_file_picker_selected));
+        RatatuiListState::default().with_selected(Some(app.logs.log_file_picker_selected));
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 

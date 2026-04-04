@@ -2,51 +2,85 @@
 //! log detail pane.
 
 use crate::{
-    app::{App, InputMode},
+    app::{InputMode, LogsState},
     ui::helpers::{
         BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG, level_color, level_filter_color,
     },
 };
 use chrono::Local;
+use diagnostic_parser::log_entry::LogEntry;
 use ratatui::{
-    Frame,
+    buffer::Buffer,
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Table, Wrap,
+        StatefulWidget, Table, Widget as _, Wrap,
     },
 };
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-/// Draw the entire Logs tab content into the given area.
-pub fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Layout: search bar + filter bar on top, then split list / detail.
-    let vert = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3), // search bar
-            Constraint::Length(1), // filter status line
-            Constraint::Min(0),    // list + detail
-        ])
-        .split(area);
+/// Widget for the Logs tab, holding borrowed immutable data.
+pub struct LogsWidget<'a> {
+    pub all_entries: &'a [LogEntry],
+    pub input_mode: InputMode,
+    pub copied_at: Option<Instant>,
+    pub copied_count: usize,
+}
 
-    draw_search_bar(frame, app, vert[0]);
-    draw_filter_bar(frame, app, vert[1]);
+impl StatefulWidget for LogsWidget<'_> {
+    type State = LogsState;
 
-    if app.show_log_detail {
-        // Horizontal split: log list (left) and detail (right).
-        let horizontal = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
-            .split(vert[2]);
+    fn render(self, area: Rect, buf: &mut Buffer, state: &mut LogsState) {
+        // Clear search cursor each frame.
+        state.search_cursor_position = None;
 
-        draw_log_list(frame, app, horizontal[0]);
-        draw_log_detail(frame, app, horizontal[1]);
-    } else {
-        // Full-width log list.
-        draw_log_list(frame, app, vert[2]);
+        // Layout: search bar + filter bar on top, then split list / detail.
+        let vert = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3), // search bar
+                Constraint::Length(1), // filter status line
+                Constraint::Min(0),    // list + detail
+            ])
+            .split(area);
+
+        render_search_bar(state, self.input_mode, vert[0], buf);
+        render_filter_bar(state, self.all_entries.len(), self.input_mode, vert[1], buf);
+
+        if state.show_detail {
+            let horizontal = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+                .split(vert[2]);
+
+            render_log_list(
+                state,
+                self.all_entries,
+                self.copied_at,
+                self.copied_count,
+                horizontal[0],
+                buf,
+            );
+            render_log_detail(
+                state,
+                self.all_entries,
+                self.copied_at,
+                self.copied_count,
+                horizontal[1],
+                buf,
+            );
+        } else {
+            render_log_list(
+                state,
+                self.all_entries,
+                self.copied_at,
+                self.copied_count,
+                vert[2],
+                buf,
+            );
+        }
     }
 }
 
@@ -54,44 +88,44 @@ pub fn draw_logs(frame: &mut Frame, app: &mut App, area: Rect) {
 // Search bar
 // ---------------------------------------------------------------------------
 
-fn draw_search_bar(frame: &mut Frame, app: &App, area: Rect) {
-    let (border_color, cursor_visible) = match app.input_mode {
+fn render_search_bar(state: &mut LogsState, input_mode: InputMode, area: Rect, buf: &mut Buffer) {
+    let (border_color, cursor_visible) = match input_mode {
         InputMode::Search => (Color::Yellow, true),
         InputMode::Normal | InputMode::Select => (BORDER_NORMAL, false),
     };
 
-    let search_text = if app.search_query.is_empty() && app.input_mode == InputMode::Normal {
+    let search_text = if state.search_query.is_empty() && input_mode == InputMode::Normal {
         "Press / to search...".to_string()
     } else {
-        app.search_query.clone()
+        state.search_query.clone()
     };
 
-    let style = if app.search_query.is_empty() && app.input_mode == InputMode::Normal {
+    let style = if state.search_query.is_empty() && input_mode == InputMode::Normal {
         Style::default().fg(Color::DarkGray)
     } else {
         Style::default().fg(Color::White)
     };
 
-    let title = if !app.search_query.is_empty() && app.input_mode == InputMode::Normal {
+    let title = if !state.search_query.is_empty() && input_mode == InputMode::Normal {
         " Search (n:next  N:prev  Esc:clear) "
     } else {
         " Search "
     };
 
-    let input = Paragraph::new(search_text.as_str()).style(style).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(border_color))
-            .title(title),
-    );
-
-    frame.render_widget(input, area);
+    Paragraph::new(search_text.as_str())
+        .style(style)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(border_color))
+                .title(title),
+        )
+        .render(area, buf);
 
     if cursor_visible {
-        // Position cursor at end of input.
-        let cursor_x = area.x + 1 + app.search_query.len() as u16;
+        let cursor_x = area.x + 1 + state.search_query.len() as u16;
         let cursor_y = area.y + 1;
-        frame.set_cursor_position((cursor_x.min(area.x + area.width - 2), cursor_y));
+        state.search_cursor_position = Some((cursor_x.min(area.x + area.width - 2), cursor_y));
     }
 }
 
@@ -99,24 +133,32 @@ fn draw_search_bar(frame: &mut Frame, app: &App, area: Rect) {
 // Filter bar
 // ---------------------------------------------------------------------------
 
-fn draw_filter_bar(frame: &mut Frame, app: &App, area: Rect) {
+fn render_filter_bar(
+    state: &LogsState,
+    total_entries: usize,
+    input_mode: InputMode,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let _ = input_mode; // kept for future use
+
     let count_text = format!(
         " {} / {} entries",
-        app.filtered_indices.len(),
-        app.all_entries.len(),
+        state.filtered_indices.len(),
+        total_entries,
     );
 
     let line = Line::from(vec![
         Span::raw("  "),
         Span::styled(" f ", Style::default().bg(Color::DarkGray).fg(Color::White)),
         Span::styled(
-            format!(" Level: {} ", app.level_filter.label()),
-            Style::default().fg(level_filter_color(&app.level_filter)),
+            format!(" Level: {} ", state.level_filter.label()),
+            Style::default().fg(level_filter_color(&state.level_filter)),
         ),
         Span::raw("  "),
         Span::styled(" s ", Style::default().bg(Color::DarkGray).fg(Color::White)),
         Span::styled(
-            format!(" Source: {} ", app.source_filter.label()),
+            format!(" Source: {} ", state.source_filter.label()),
             Style::default().fg(Color::Magenta),
         ),
         Span::raw("  "),
@@ -125,7 +167,7 @@ fn draw_filter_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::raw("  "),
         Span::styled(" l ", Style::default().bg(Color::DarkGray).fg(Color::White)),
         Span::styled(
-            format!(" Log File: {} ", app.log_file_filter.label()),
+            format!(" Log File: {} ", state.log_file_filter.label()),
             Style::default().fg(Color::Blue),
         ),
         Span::raw("  "),
@@ -137,40 +179,39 @@ fn draw_filter_bar(frame: &mut Frame, app: &App, area: Rect) {
         Span::styled(count_text, Style::default().fg(Color::DarkGray)),
     ]);
 
-    let bar = Paragraph::new(line);
-    frame.render_widget(bar, area);
+    Paragraph::new(line).render(area, buf);
 }
 
 // ---------------------------------------------------------------------------
 // Log list
 // ---------------------------------------------------------------------------
 
-fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = if app.show_log_detail && app.detail_focused {
+fn render_log_list(
+    state: &mut LogsState,
+    all_entries: &[LogEntry],
+    copied_at: Option<Instant>,
+    copied_count: usize,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let border_color = if state.show_detail && state.detail_focused {
         BORDER_NORMAL
     } else {
         BORDER_FOCUSED
     };
 
     let inner_height = area.height.saturating_sub(2) as usize;
-    app.viewport.log_list = inner_height as u16;
+    state.list_viewport_height = inner_height as u16;
 
-    let total = app.filtered_indices.len();
-    let selection_range = app.selection_range();
+    let total = state.filtered_indices.len();
+    let selection_range = state.selection_range();
 
     // Virtual scrolling: only build Row objects for the visible window.
-    // Ensure the offset keeps the selected row visible. Navigation methods
-    // (page_up/page_down etc.) update `selected` but the offset is normally
-    // corrected by Table's render — which we bypass with the local-slice
-    // approach, so we must do it ourselves.
     if inner_height > 0 && total > 0 {
-        // Clamp selected — ratatui's select_last() sets it to usize::MAX
-        // as a sentinel that is normally corrected during render. Since we
-        // bypass the full-table render we must correct it ourselves.
-        let selected = app.log_list_state.selected().unwrap_or(0).min(total - 1);
-        app.log_list_state.select(Some(selected));
+        let selected = state.list_state.selected().unwrap_or(0).min(total - 1);
+        state.list_state.select(Some(selected));
 
-        let offset = app.log_list_state.offset();
+        let offset = state.list_state.offset();
         let new_offset = if selected < offset {
             selected
         } else if selected >= offset + inner_height {
@@ -178,29 +219,28 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         } else {
             offset
         };
-        *app.log_list_state.offset_mut() = new_offset;
+        *state.list_state.offset_mut() = new_offset;
     }
 
-    let offset = app.log_list_state.offset();
+    let offset = state.list_state.offset();
     let visible_start = offset;
     let visible_end = offset.saturating_add(inner_height + 1).min(total);
 
-    let query_lower = app.search_query.to_lowercase();
+    let query_lower = state.search_query.to_lowercase();
     let highlight_style = Style::default()
         .fg(Color::Black)
         .bg(Color::Yellow)
         .add_modifier(Modifier::BOLD);
 
-    let items: Vec<Row> = app.filtered_indices[visible_start..visible_end]
+    let items = state.filtered_indices[visible_start..visible_end]
         .iter()
         .enumerate()
         .map(|(local_idx, &entry_idx)| {
             let display_idx = visible_start + local_idx;
-            let entry = &app.all_entries[entry_idx];
+            let entry = &all_entries[entry_idx];
             let is_in_selection = selection_range
                 .is_some_and(|(start, end)| display_idx >= start && display_idx <= end);
 
-            // Build message spans with search highlighting.
             let msg_spans = if !query_lower.is_empty() {
                 highlight_matches(
                     &entry.message,
@@ -244,16 +284,12 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             ])
             .style(style)
         })
-        .collect();
+        .collect::<Vec<_>>();
 
-    // Show "Copied!" flash or selection count in the title.
-    let show_copied = app
-        .copied_at
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let show_copied = copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied {
-        let count = app.copied_count;
-        format!(" Logs — Copied {count} entries! ✓ ")
+        format!(" Logs — Copied {copied_count} entries! ✓ ")
     } else if let Some((start, end)) = selection_range {
         let count = end - start + 1;
         format!(
@@ -261,7 +297,8 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             if total == 0 {
                 0
             } else {
-                app.log_list_state
+                state
+                    .list_state
                     .selected()
                     .map(|i| i + 1)
                     .unwrap_or_default()
@@ -275,7 +312,8 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             if total == 0 {
                 0
             } else {
-                app.log_list_state
+                state
+                    .list_state
                     .selected()
                     .map(|i| i.saturating_add(1).clamp(0, total))
                     .unwrap_or_default()
@@ -302,10 +340,10 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
     ];
 
     // Render only the visible slice with local indices for the Table widget.
-    let saved_selected = app.log_list_state.selected();
+    let saved_selected = state.list_state.selected();
     let local_selected = saved_selected.and_then(|s| s.checked_sub(visible_start));
-    app.log_list_state.select(local_selected);
-    *app.log_list_state.offset_mut() = 0;
+    state.list_state.select(local_selected);
+    *state.list_state.offset_mut() = 0;
 
     let table = Table::new(items, widths)
         .block(
@@ -316,72 +354,81 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         )
         .row_highlight_style(Style::new().reversed());
 
-    frame.render_stateful_widget(table, area, &mut app.log_list_state);
+    StatefulWidget::render(table, area, buf, &mut state.list_state);
 
     // Restore global state after rendering.
-    app.log_list_state.select(saved_selected);
-    *app.log_list_state.offset_mut() = offset;
+    state.list_state.select(saved_selected);
+    *state.list_state.offset_mut() = offset;
 
     // Rebuild scrollbar state each frame from the selected position.
-    app.log_list_scrollbar = ScrollbarState::new(total).position(saved_selected.unwrap_or(0));
-    frame.render_stateful_widget(
-        Scrollbar::new(ScrollbarOrientation::VerticalRight)
-            .begin_symbol(Some("↑"))
-            .end_symbol(Some("↓")),
-        area.inner(Margin {
-            vertical: 1,
-            horizontal: 0,
-        }),
-        &mut app.log_list_scrollbar,
-    );
+    state.list_scrollbar = ScrollbarState::new(total).position(saved_selected.unwrap_or(0));
+    Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(Some("↑"))
+        .end_symbol(Some("↓"))
+        .render(
+            area.inner(Margin {
+                vertical: 1,
+                horizontal: 0,
+            }),
+            buf,
+            &mut state.list_scrollbar,
+        );
 }
 
 // ---------------------------------------------------------------------------
 // Log detail pane
 // ---------------------------------------------------------------------------
 
-fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
-    let border_color = if app.detail_focused {
+fn render_log_detail(
+    state: &mut LogsState,
+    all_entries: &[LogEntry],
+    copied_at: Option<Instant>,
+    copied_count: usize,
+    area: Rect,
+    buf: &mut Buffer,
+) {
+    let border_color = if state.detail_focused {
         BORDER_FOCUSED
     } else {
         BORDER_NORMAL
     };
 
-    // Clone entry data to avoid borrow conflicts with app.detail_scroll.
-    let entry_data = app.selected_log_entry().map(|entry| {
-        (
-            entry.level,
-            entry.timestamp.with_timezone(&Local).to_string(),
-            entry.thread.clone(),
-            entry.source.raw().into_owned(),
-            entry.source.file_path().map(|s| s.to_owned()),
-            entry.source.line_number(),
-            entry.log_file_title.clone(),
-            entry.message.clone(),
-            entry.has_continuation(),
-            entry.continuation.clone(),
-        )
-    });
+    // Get the selected entry data.
+    let entry_data = state
+        .list_state
+        .selected()
+        .and_then(|sel| state.filtered_indices.get(sel).copied())
+        .and_then(|idx| all_entries.get(idx))
+        .map(|entry| {
+            (
+                entry.level,
+                entry.timestamp.with_timezone(&Local).to_string(),
+                entry.thread.clone(),
+                entry.source.raw().into_owned(),
+                entry.source.file_path().map(|s| s.to_owned()),
+                entry.source.line_number(),
+                entry.log_file_title.clone(),
+                entry.message.clone(),
+                entry.has_continuation(),
+                entry.continuation.clone(),
+            )
+        });
 
-    // Build title with selection / copied feedback.
-    let show_copied = app
-        .copied_at
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
-    let detail_sel = app.detail_selection_range();
+    let show_copied = copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let detail_sel = state.detail_selection_range();
 
-    let title = if show_copied && app.detail_focused {
-        let count = app.copied_count;
-        format!(" Detail — Copied {count} lines! ✓ ")
+    let title = if show_copied && state.detail_focused {
+        format!(" Detail — Copied {copied_count} lines! ✓ ")
     } else if let Some((start, end)) = detail_sel {
         let count = end - start + 1;
         format!(" Detail — {} selected (y:copy  Esc:cancel) ", count)
-    } else if app.detail_focused {
+    } else if state.detail_focused {
         " Detail (focused) ".to_string()
     } else {
         " Detail ".to_string()
     };
 
-    let title_style = if show_copied && app.detail_focused {
+    let title_style = if show_copied && state.detail_focused {
         Style::default()
             .fg(Color::Green)
             .add_modifier(Modifier::BOLD)
@@ -409,14 +456,13 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         continuation,
     )) = entry_data
     else {
-        let empty = Paragraph::new("No log entry selected")
+        Paragraph::new("No log entry selected")
             .style(Style::default().fg(Color::DarkGray))
-            .block(block);
-        frame.render_widget(empty, area);
+            .block(block)
+            .render(area, buf);
         return;
     };
 
-    // Build detail text as styled Lines, one per logical line.
     let mut lines: Vec<Line> = Vec::new();
 
     lines.push(Line::from(vec![
@@ -474,7 +520,6 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     )));
     lines.push(Line::from(""));
 
-    // Wrap message lines manually for display.
     for msg_line in message.lines() {
         lines.push(Line::from(Span::raw(msg_line.to_string())));
     }
@@ -502,25 +547,21 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // Track line count so the app can clamp cursor navigation.
     let total_lines = lines.len();
-    app.detail_line_count = total_lines;
+    state.detail_line_count = total_lines;
 
-    // Clamp cursor.
-    if total_lines > 0 && app.detail_cursor >= total_lines {
-        app.detail_cursor = total_lines - 1;
+    if total_lines > 0 && state.detail_cursor >= total_lines {
+        state.detail_cursor = total_lines - 1;
     }
 
-    // Apply cursor / selection highlighting when the detail pane is focused.
-    if app.detail_focused {
-        let selection_range = app.detail_selection_range();
+    if state.detail_focused {
+        let selection_range = state.detail_selection_range();
         for (i, line) in lines.iter_mut().enumerate() {
-            let is_cursor = i == app.detail_cursor;
+            let is_cursor = i == state.detail_cursor;
             let is_in_selection =
                 selection_range.is_some_and(|(start, end)| i >= start && i <= end);
 
             if is_cursor {
-                // Patch each span in the line with the highlight background.
                 *line = Line::from(
                     line.spans
                         .iter()
@@ -543,28 +584,24 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
 
-    // Clamp scroll.
     let inner_height = area.height.saturating_sub(2) as usize;
-    app.viewport.log_detail = inner_height as u16;
+    state.detail_viewport_height = inner_height as u16;
     let max_scroll = total_lines.saturating_sub(inner_height);
-    if (app.detail_scroll as usize) > max_scroll {
-        app.detail_scroll = max_scroll as u16;
+    if (state.detail_scroll as usize) > max_scroll {
+        state.detail_scroll = max_scroll as u16;
     }
 
-    let paragraph = Paragraph::new(lines)
+    Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
-        .scroll((app.detail_scroll, 0));
-
-    frame.render_widget(paragraph, area);
+        .scroll((state.detail_scroll, 0))
+        .render(area, buf);
 }
 
 // ---------------------------------------------------------------------------
 // Search highlighting
 // ---------------------------------------------------------------------------
 
-/// Split `text` into spans, highlighting case-insensitive occurrences of
-/// `query_lower` with `match_style` and rendering the rest with `base_style`.
 fn highlight_matches(
     text: &str,
     query_lower: &str,

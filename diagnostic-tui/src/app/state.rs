@@ -53,8 +53,6 @@ pub enum InputMode {
     Normal,
     Search,
     /// Visual selection mode on the Logs, Crash Reports, or Overview tab.
-    /// The anchor index is stored in `App::select_anchor` (Logs),
-    /// `App::crash_select_anchor` (Crashes), or `App::overview_select_anchor` (Overview).
     Select,
 }
 
@@ -107,39 +105,5 @@ impl ContainerStateExt for TableState {
     #[inline]
     fn end(&mut self) {
         self.select_last();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Viewport heights
-// ---------------------------------------------------------------------------
-
-/// Last-known viewport heights (in rows) for each scrollable region.
-///
-/// These are updated by the rendering code in `ui` each frame and read
-/// by the key handlers so that Page Up / Page Down move by exactly one
-/// screen height.
-#[derive(Debug, Clone, Copy)]
-pub struct ViewportHeights {
-    pub overview: u16,
-    pub log_list: u16,
-    pub log_detail: u16,
-    pub crash_list: u16,
-    pub crash_detail: u16,
-    pub source_picker: u16,
-    pub log_file_picker: u16,
-}
-
-impl Default for ViewportHeights {
-    fn default() -> Self {
-        Self {
-            overview: 20,
-            log_list: 20,
-            log_detail: 20,
-            crash_list: 20,
-            crash_detail: 20,
-            source_picker: 20,
-            log_file_picker: 20,
-        }
     }
 }
