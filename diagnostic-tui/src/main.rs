@@ -35,6 +35,14 @@ fn main() {
         }
     };
 
+    // Ensure the terminal is restored if the app panics.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture);
+        default_hook(info);
+    }));
+
     if let Err(e) = run_tui(report) {
         eprintln!("error: {e}");
         process::exit(1);

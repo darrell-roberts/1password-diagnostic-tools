@@ -43,7 +43,9 @@ pub mod log_entry;
 pub mod model;
 
 pub use error::DiagnosticError;
-pub use log_entry::{LogEntry, LogEntryRef, LogLevel, LogSource, LogSourceRef, StringInterner};
+pub use log_entry::{
+    LogEntry, LogEntryLike, LogEntryRef, LogLevel, LogSource, LogSourceRef, StringInterner,
+};
 pub use model::{
     Account, AccountState, AccountType, BillingStatus, CrashReportEntry, DiagnosticReport, Feature,
     LogFile, Overview, System, Vault, VaultItems, VaultType,

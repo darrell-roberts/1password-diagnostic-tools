@@ -36,7 +36,7 @@
 //! A `LogEntryRef` can be promoted to a `LogEntry` via [`LogEntryRef::to_owned`]
 //! when you need to store it beyond the lifetime of the backing data.
 use chrono::{DateTime, FixedOffset};
-use std::{collections::HashMap, fmt, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, fmt, sync::Arc};
 
 // ---------------------------------------------------------------------------
 // Log level
@@ -84,6 +84,35 @@ impl fmt::Display for LogLevel {
 }
 
 // ---------------------------------------------------------------------------
+// Shared trait for panic matching
+// ---------------------------------------------------------------------------
+
+/// Common interface for log entry types, enabling generic panic-matching
+/// in [`CrashReportEntry`](crate::model::CrashReportEntry).
+pub trait LogEntryLike {
+    fn is_panic(&self) -> bool;
+    fn timestamp_utc(&self) -> DateTime<chrono::Utc>;
+}
+
+impl LogEntryLike for LogEntry {
+    fn is_panic(&self) -> bool {
+        self.is_panic()
+    }
+    fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
+        self.timestamp_utc()
+    }
+}
+
+impl LogEntryLike for LogEntryRef<'_> {
+    fn is_panic(&self) -> bool {
+        self.is_panic()
+    }
+    fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
+        self.timestamp_utc()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Log source (owned)
 // ---------------------------------------------------------------------------
 
@@ -123,10 +152,10 @@ impl LogSource {
     }
 
     /// The raw source string reconstructed from its parts.
-    pub fn raw(&self) -> String {
+    pub fn raw(&self) -> Cow<'_, str> {
         match &self.detail {
-            Some(detail) => format!("{}:{}", self.component, detail),
-            None => self.component.clone(),
+            Some(detail) => Cow::Owned(format!("{}:{}", self.component, detail)),
+            None => Cow::Borrowed(&self.component),
         }
     }
 
@@ -148,7 +177,10 @@ impl LogSource {
 
 impl fmt::Display for LogSource {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "[{}]", self.raw())
+        match &self.detail {
+            Some(detail) => write!(f, "[{}:{}]", self.component, detail),
+            None => write!(f, "[{}]", self.component),
+        }
     }
 }
 
@@ -271,25 +303,11 @@ impl LogEntry {
     /// `log_file_title` is stored on every returned entry so callers can
     /// trace entries back to their originating file.
     pub fn parse_log_content(log_file_title: &str, content: &str) -> Vec<Self> {
-        let mut entries: Vec<Self> = Vec::new();
-
-        for line in content.lines() {
-            if line.trim_start().is_empty() {
-                continue;
-            }
-
-            match Self::parse_line(log_file_title, line) {
-                Some(entry) => entries.push(entry),
-                None => {
-                    // This is a continuation line — attach it to the last entry.
-                    if let Some(last) = entries.last_mut() {
-                        last.continuation.push(line.to_owned());
-                    }
-                }
-            }
-        }
-
-        entries
+        parse_log_lines(
+            content,
+            |line| Self::parse_line(log_file_title, line),
+            |entry, line| entry.continuation.push(line.to_owned()),
+        )
     }
 
     /// Attempt to parse a single log line into a [`LogEntry`].
@@ -415,24 +433,11 @@ impl<'a> LogEntryRef<'a> {
         interner: &mut StringInterner,
     ) -> Vec<Self> {
         let title_arc = interner.intern(log_file_title);
-        let mut entries: Vec<Self> = Vec::new();
-
-        for line in content.lines() {
-            if line.trim_start().is_empty() {
-                continue;
-            }
-
-            match Self::parse_line(&title_arc, line, interner) {
-                Some(entry) => entries.push(entry),
-                None => {
-                    if let Some(last) = entries.last_mut() {
-                        last.continuation.push(line);
-                    }
-                }
-            }
-        }
-
-        entries
+        parse_log_lines(
+            content,
+            |line| Self::parse_line(&title_arc, line, interner),
+            |entry, line| entry.continuation.push(line),
+        )
     }
 
     /// Attempt to parse a single log line into a zero-copy [`LogEntryRef`].
@@ -565,6 +570,33 @@ impl StringInterner {
 // ---------------------------------------------------------------------------
 // Shared line-parsing logic
 // ---------------------------------------------------------------------------
+
+/// Generic log content parser shared by owned and zero-copy paths.
+///
+/// Iterates lines, calling `try_parse` on each. If it returns `Some(entry)`,
+/// the entry is collected. Otherwise the line is a continuation and is
+/// attached to the last entry via `push_continuation`.
+fn parse_log_lines<'a, T>(
+    content: &'a str,
+    mut try_parse: impl FnMut(&'a str) -> Option<T>,
+    mut push_continuation: impl FnMut(&mut T, &'a str),
+) -> Vec<T> {
+    let mut entries: Vec<T> = Vec::new();
+    for line in content.lines() {
+        if line.trim_start().is_empty() {
+            continue;
+        }
+        match try_parse(line) {
+            Some(entry) => entries.push(entry),
+            None => {
+                if let Some(last) = entries.last_mut() {
+                    push_continuation(last, line);
+                }
+            }
+        }
+    }
+    entries
+}
 
 /// Core line parser shared by both [`LogEntry`] and [`LogEntryRef`].
 ///

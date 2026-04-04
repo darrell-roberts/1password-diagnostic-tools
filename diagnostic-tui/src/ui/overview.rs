@@ -8,10 +8,13 @@ use std::time::Duration;
 
 use diagnostic_parser::log_entry::LogLevel;
 use ratatui::Frame;
+use ratatui::layout::Margin;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+};
 
 /// Draw the Overview tab content into the given area.
 pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -164,7 +167,7 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
     lines.push(Line::from(""));
     let files_str = report.logs.len().to_string();
     lines.push(kv_line("Files", &files_str));
-    let total_lines_str = report.total_log_lines().to_string();
+    let total_lines_str = app.total_log_lines.to_string();
     lines.push(kv_line("Total Lines", &total_lines_str));
     let parsed_str = app.all_entries.len().to_string();
     lines.push(kv_line("Parsed Entries", &parsed_str));
@@ -244,7 +247,7 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
         .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied && app.tab == Tab::Overview {
-        let count = overview_selection.map_or(1, |(s, e)| e - s + 1);
+        let count = app.copied_count;
         format!(" Overview — Copied {count} lines! ✓ ")
     } else if in_select {
         let (start, end) = overview_selection.unwrap_or((cursor, cursor));
@@ -288,10 +291,24 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
         app.overview_scroll = max_scroll as u16;
     }
 
+    let total_lines = app.overview_line_count;
+
     let paragraph = Paragraph::new(lines)
         .block(block)
         .wrap(Wrap { trim: false })
         .scroll((app.overview_scroll, 0));
 
     frame.render_widget(paragraph, area);
+
+    let mut scrollbar_state = ScrollbarState::new(total_lines).position(app.overview_cursor);
+    frame.render_stateful_widget(
+        Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓")),
+        area.inner(Margin {
+            vertical: 1,
+            horizontal: 0,
+        }),
+        &mut scrollbar_state,
+    );
 }

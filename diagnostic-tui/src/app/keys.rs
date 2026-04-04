@@ -5,8 +5,22 @@
 //! the application should quit.
 
 use super::App;
+use crate::app::navigation::ensure_cursor_visible;
 use crate::app::state::{ContainerStateExt as _, InputMode, Tab};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+/// Which table-backed list is active in visual-select mode.
+pub(super) enum ListSelectTarget {
+    Logs,
+    Crashes,
+}
+
+/// Which cursor-based pane is active in visual-select mode.
+pub(super) enum PaneSelectTarget {
+    Overview,
+    LogDetail,
+    CrashDetail,
+}
 
 impl App {
     /// Handle keys when in search input mode.
@@ -202,6 +216,7 @@ impl App {
                     }
                 } else if self.tab == Tab::CrashReports {
                     self.detail_focused = !self.detail_focused;
+                    self.crash_detail_cursor = 0;
                     self.crash_detail_scroll = 0;
                 }
             }
@@ -240,8 +255,15 @@ impl App {
                 self.input_mode = InputMode::Select;
             }
 
-            // Visual select mode (Crash Reports list — only when list is focused).
-            KeyCode::Char('v') if self.tab == Tab::CrashReports && !self.detail_focused => {
+            // Visual select mode (Crash Reports — detail pane focused).
+            KeyCode::Char('v') if self.tab == Tab::CrashReports && self.detail_focused => {
+                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
+                self.crash_detail_selecting = true;
+                self.input_mode = InputMode::Select;
+            }
+
+            // Visual select mode (Crash Reports list — list focused).
+            KeyCode::Char('v') if self.tab == Tab::CrashReports => {
                 self.crash_select_anchor = self.crash_list_state.selected();
                 self.input_mode = InputMode::Select;
             }
@@ -268,7 +290,14 @@ impl App {
                 self.copy_selection();
             }
 
-            // Copy crash detail or single crash entry (Crash Reports tab).
+            // Copy single line under cursor (Crash Reports — detail pane focused).
+            KeyCode::Char('y') if self.tab == Tab::CrashReports && self.detail_focused => {
+                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
+                self.crash_detail_selecting = true;
+                self.copy_crash_detail_selection();
+            }
+
+            // Copy crash entry (Crash Reports — list focused).
             KeyCode::Char('y') if self.tab == Tab::CrashReports => {
                 self.copy_crash_selection();
             }
@@ -288,6 +317,7 @@ impl App {
             }
             KeyCode::Right if self.tab == Tab::CrashReports => {
                 self.detail_focused = true;
+                self.crash_detail_cursor = 0;
                 self.crash_detail_scroll = 0;
             }
             KeyCode::Left if self.tab == Tab::Logs => {
@@ -307,9 +337,13 @@ impl App {
         false
     }
 
-    /// Handle keys while in visual-select mode on the Logs list.
-    pub(super) fn handle_select_key(&mut self, key: KeyEvent) -> bool {
-        // Handle second key of a two-key `z` command.
+    /// Handle keys while in visual-select mode on a table-backed list
+    /// (Logs list or Crash list).
+    pub(super) fn handle_list_select_key(
+        &mut self,
+        key: KeyEvent,
+        target: ListSelectTarget,
+    ) -> bool {
         if self.pending_z {
             self.pending_z = false;
             match key.code {
@@ -321,256 +355,175 @@ impl App {
             return false;
         }
 
+        let (table, page, scroll_reset) = match target {
+            ListSelectTarget::Logs => (
+                &mut self.log_list_state,
+                self.viewport.log_list,
+                &mut self.detail_scroll,
+            ),
+            ListSelectTarget::Crashes => (
+                &mut self.crash_list_state,
+                self.viewport.crash_list,
+                &mut self.crash_detail_scroll,
+            ),
+        };
+
         match key.code {
-            // Cancel selection.
-            KeyCode::Esc => {
-                self.select_anchor = None;
-                self.input_mode = InputMode::Normal;
-            }
-            // Yank (copy) selection.
-            KeyCode::Char('y') => {
-                self.copy_selection();
-            }
-            // Navigation still works while selecting.
+            KeyCode::Esc => {}
+            KeyCode::Char('y') => {}
             KeyCode::Up | KeyCode::Char('k') => {
-                self.log_list_state.up();
-                self.detail_scroll = 0;
+                table.up();
+                *scroll_reset = 0;
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                self.log_list_state.down();
-                self.detail_scroll = 0;
+                table.down();
+                *scroll_reset = 0;
             }
             KeyCode::PageUp => {
-                let page = self.viewport.log_list;
-                self.log_list_state.page_up(page);
-                self.detail_scroll = 0;
+                table.page_up(page);
+                *scroll_reset = 0;
             }
             KeyCode::PageDown => {
-                let page = self.viewport.log_list;
-                self.log_list_state.page_down(page);
-                self.detail_scroll = 0;
+                table.page_down(page);
+                *scroll_reset = 0;
             }
             KeyCode::Home | KeyCode::Char('g') => {
-                self.log_list_state.home();
-                self.detail_scroll = 0;
+                table.home();
+                *scroll_reset = 0;
             }
             KeyCode::End | KeyCode::Char('G') => {
-                self.log_list_state.end();
-                self.detail_scroll = 0;
+                table.end();
+                *scroll_reset = 0;
             }
-            // Start a two-key z command (zz, zt, zb).
             KeyCode::Char('z') => {
                 self.pending_z = true;
             }
             _ => {}
         }
-        false
-    }
 
-    /// Handle keys while in visual-select mode on the Crash list.
-    pub(super) fn handle_crash_select_key(&mut self, key: KeyEvent) -> bool {
-        // Handle second key of a two-key `z` command.
-        if self.pending_z {
-            self.pending_z = false;
-            match key.code {
-                KeyCode::Char('z') => self.scroll_cursor_center(),
-                KeyCode::Char('t') => self.scroll_cursor_top(),
-                KeyCode::Char('b') => self.scroll_cursor_bottom(),
-                _ => {}
-            }
-            return false;
-        }
-
+        // Handle Esc/y after the borrow on table/scroll_reset is released.
         match key.code {
-            // Cancel selection.
             KeyCode::Esc => {
-                self.crash_select_anchor = None;
+                match target {
+                    ListSelectTarget::Logs => self.select_anchor = None,
+                    ListSelectTarget::Crashes => self.crash_select_anchor = None,
+                }
                 self.input_mode = InputMode::Normal;
             }
-            // Yank (copy) selection.
-            KeyCode::Char('y') => {
-                self.copy_crash_selection();
-            }
-            // Navigation still works while selecting.
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.crash_list_state.up();
-                self.crash_detail_scroll = 0;
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.crash_list_state.down();
-                self.crash_detail_scroll = 0;
-            }
-            KeyCode::PageUp => {
-                let page = self.viewport.crash_list;
-                self.crash_list_state.page_up(page);
-                self.crash_detail_scroll = 0;
-            }
-            KeyCode::PageDown => {
-                let page = self.viewport.crash_list;
-                self.crash_list_state.page_down(page);
-                self.crash_detail_scroll = 0;
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.crash_list_state.home();
-                self.crash_detail_scroll = 0;
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                self.crash_list_state.end();
-                self.crash_detail_scroll = 0;
-            }
-            // Start a two-key z command (zz, zt, zb).
-            KeyCode::Char('z') => {
-                self.pending_z = true;
-            }
+            KeyCode::Char('y') => match target {
+                ListSelectTarget::Logs => self.copy_selection(),
+                ListSelectTarget::Crashes => self.copy_crash_selection(),
+            },
             _ => {}
         }
         false
     }
 
-    /// Handle keys while in visual-select mode on the Overview tab.
-    pub(super) fn handle_overview_select_key(&mut self, key: KeyEvent) -> bool {
-        // Handle second key of a two-key `z` command.
+    /// Handle keys while in visual-select mode on a cursor-based pane
+    /// (Overview, Log detail, or Crash detail).
+    pub(super) fn handle_pane_select_key(
+        &mut self,
+        key: KeyEvent,
+        target: PaneSelectTarget,
+    ) -> bool {
+        let (cursor, scroll, line_count, viewport_h) = match target {
+            PaneSelectTarget::Overview => (
+                &mut self.overview_cursor,
+                &mut self.overview_scroll,
+                self.overview_line_count,
+                self.viewport.overview,
+            ),
+            PaneSelectTarget::LogDetail => (
+                &mut self.detail_cursor,
+                &mut self.detail_scroll,
+                self.detail_line_count,
+                self.viewport.log_detail,
+            ),
+            PaneSelectTarget::CrashDetail => (
+                &mut self.crash_detail_cursor,
+                &mut self.crash_detail_scroll,
+                self.crash_detail_line_count,
+                self.viewport.crash_detail,
+            ),
+        };
+
         if self.pending_z {
             self.pending_z = false;
+            let half = (viewport_h as usize) / 2;
             match key.code {
-                KeyCode::Char('z') => self.scroll_cursor_center(),
-                KeyCode::Char('t') => self.scroll_cursor_top(),
-                KeyCode::Char('b') => self.scroll_cursor_bottom(),
-                _ => {}
-            }
-            return false;
-        }
-
-        match key.code {
-            // Cancel selection.
-            KeyCode::Esc => {
-                self.overview_select_anchor = None;
-                self.input_mode = InputMode::Normal;
-            }
-            // Yank (copy) selection.
-            KeyCode::Char('y') => {
-                self.copy_overview_selection();
-            }
-            // Navigation still works while selecting.
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.overview_cursor > 0 {
-                    self.overview_cursor -= 1;
-                    self.ensure_overview_cursor_visible();
-                }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.overview_line_count > 0
-                    && self.overview_cursor + 1 < self.overview_line_count
-                {
-                    self.overview_cursor += 1;
-                    self.ensure_overview_cursor_visible();
-                }
-            }
-            KeyCode::PageUp => {
-                let page = self.viewport.overview as usize;
-                self.overview_cursor = self.overview_cursor.saturating_sub(page);
-                self.ensure_overview_cursor_visible();
-            }
-            KeyCode::PageDown => {
-                let page = self.viewport.overview as usize;
-                if self.overview_line_count > 0 {
-                    self.overview_cursor =
-                        (self.overview_cursor + page).min(self.overview_line_count - 1);
-                }
-                self.ensure_overview_cursor_visible();
-            }
-            KeyCode::Home | KeyCode::Char('g') => {
-                self.overview_cursor = 0;
-                self.ensure_overview_cursor_visible();
-            }
-            KeyCode::End | KeyCode::Char('G') => {
-                if self.overview_line_count > 0 {
-                    self.overview_cursor = self.overview_line_count - 1;
-                }
-                self.ensure_overview_cursor_visible();
-            }
-            // Start a two-key z command (zz, zt, zb).
-            KeyCode::Char('z') => {
-                self.pending_z = true;
-            }
-            _ => {}
-        }
-        false
-    }
-
-    /// Handle keys while in visual-select mode inside the log detail pane.
-    pub(super) fn handle_detail_select_key(&mut self, key: KeyEvent) -> bool {
-        // Handle second key of a two-key `z` command.
-        if self.pending_z {
-            self.pending_z = false;
-            match key.code {
-                KeyCode::Char('z') => {
-                    let half = (self.viewport.log_detail as usize) / 2;
-                    self.detail_scroll = self.detail_cursor.saturating_sub(half) as u16;
-                }
-                KeyCode::Char('t') => {
-                    self.detail_scroll = self.detail_cursor as u16;
-                }
+                KeyCode::Char('z') => *scroll = cursor.saturating_sub(half) as u16,
+                KeyCode::Char('t') => *scroll = *cursor as u16,
                 KeyCode::Char('b') => {
-                    let h = self.viewport.log_detail as usize;
-                    self.detail_scroll = (self.detail_cursor + 1).saturating_sub(h) as u16;
+                    *scroll = (*cursor + 1).saturating_sub(viewport_h as usize) as u16
                 }
                 _ => {}
             }
             return false;
         }
 
+        let page = viewport_h as usize;
         match key.code {
-            // Cancel selection.
-            KeyCode::Esc => {
-                self.detail_select_anchor = None;
-                self.detail_selecting = false;
-                self.input_mode = InputMode::Normal;
-            }
-            // Yank (copy) selection.
-            KeyCode::Char('y') => {
-                self.copy_detail_selection();
-            }
-            // Navigation still works while selecting.
+            KeyCode::Esc => {}
+            KeyCode::Char('y') => {}
             KeyCode::Up | KeyCode::Char('k') => {
-                if self.detail_cursor > 0 {
-                    self.detail_cursor -= 1;
-                    self.ensure_detail_cursor_visible();
+                if *cursor > 0 {
+                    *cursor -= 1;
+                    ensure_cursor_visible(*cursor, scroll, viewport_h);
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if self.detail_line_count > 0 && self.detail_cursor + 1 < self.detail_line_count {
-                    self.detail_cursor += 1;
-                    self.ensure_detail_cursor_visible();
+                if line_count > 0 && *cursor + 1 < line_count {
+                    *cursor += 1;
+                    ensure_cursor_visible(*cursor, scroll, viewport_h);
                 }
             }
             KeyCode::PageUp => {
-                let page = self.viewport.log_detail as usize;
-                self.detail_cursor = self.detail_cursor.saturating_sub(page);
-                self.ensure_detail_cursor_visible();
+                *cursor = cursor.saturating_sub(page);
+                ensure_cursor_visible(*cursor, scroll, viewport_h);
             }
             KeyCode::PageDown => {
-                let page = self.viewport.log_detail as usize;
-                if self.detail_line_count > 0 {
-                    self.detail_cursor =
-                        (self.detail_cursor + page).min(self.detail_line_count - 1);
+                if line_count > 0 {
+                    *cursor = (*cursor + page).min(line_count - 1);
                 }
-                self.ensure_detail_cursor_visible();
+                ensure_cursor_visible(*cursor, scroll, viewport_h);
             }
             KeyCode::Home | KeyCode::Char('g') => {
-                self.detail_cursor = 0;
-                self.ensure_detail_cursor_visible();
+                *cursor = 0;
+                ensure_cursor_visible(*cursor, scroll, viewport_h);
             }
             KeyCode::End | KeyCode::Char('G') => {
-                if self.detail_line_count > 0 {
-                    self.detail_cursor = self.detail_line_count - 1;
+                if line_count > 0 {
+                    *cursor = line_count - 1;
                 }
-                self.ensure_detail_cursor_visible();
+                ensure_cursor_visible(*cursor, scroll, viewport_h);
             }
-            // Start a two-key z command (zz, zt, zb).
             KeyCode::Char('z') => {
                 self.pending_z = true;
             }
+            _ => {}
+        }
+
+        // Handle Esc/y after the borrow on cursor/scroll is released.
+        match key.code {
+            KeyCode::Esc => {
+                match target {
+                    PaneSelectTarget::Overview => self.overview_select_anchor = None,
+                    PaneSelectTarget::LogDetail => {
+                        self.detail_select_anchor = None;
+                        self.detail_selecting = false;
+                    }
+                    PaneSelectTarget::CrashDetail => {
+                        self.crash_detail_select_anchor = None;
+                        self.crash_detail_selecting = false;
+                    }
+                }
+                self.input_mode = InputMode::Normal;
+            }
+            KeyCode::Char('y') => match target {
+                PaneSelectTarget::Overview => self.copy_overview_selection(),
+                PaneSelectTarget::LogDetail => self.copy_detail_selection(),
+                PaneSelectTarget::CrashDetail => self.copy_crash_detail_selection(),
+            },
             _ => {}
         }
         false
