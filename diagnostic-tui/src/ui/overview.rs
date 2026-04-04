@@ -164,7 +164,7 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
     lines.push(Line::from(""));
     let files_str = report.logs.len().to_string();
     lines.push(kv_line("Files", &files_str));
-    let total_lines_str = report.total_log_lines().to_string();
+    let total_lines_str = app.total_log_lines.to_string();
     lines.push(kv_line("Total Lines", &total_lines_str));
     let parsed_str = app.all_entries.len().to_string();
     lines.push(kv_line("Parsed Entries", &parsed_str));

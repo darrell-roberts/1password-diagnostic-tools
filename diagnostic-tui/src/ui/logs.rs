@@ -353,7 +353,7 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
             entry.level,
             entry.timestamp.with_timezone(&Local).to_string(),
             entry.thread.clone(),
-            entry.source.raw(),
+            entry.source.raw().into_owned(),
             entry.source.file_path().map(|s| s.to_owned()),
             entry.source.line_number(),
             entry.log_file_title.clone(),

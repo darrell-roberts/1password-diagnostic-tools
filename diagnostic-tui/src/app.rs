@@ -30,6 +30,9 @@ pub struct App {
     /// The loaded diagnostic report.
     pub report: DiagnosticReport,
 
+    /// Cached total log line count (computed once at startup).
+    pub total_log_lines: usize,
+
     /// All parsed log entries (immutable after construction).
     pub all_entries: Vec<LogEntry>,
 
@@ -160,6 +163,7 @@ pub struct App {
 
 impl App {
     pub fn new(report: DiagnosticReport) -> Self {
+        let total_log_lines = report.total_log_lines();
         let all_entries = report.parse_log_entries();
         let source_filter = SourceFilter::new(&all_entries);
         let log_file_filter = LogFileFilter::new(&all_entries);
@@ -170,6 +174,7 @@ impl App {
 
         Self {
             report,
+            total_log_lines,
             all_entries,
             filtered_indices,
             tab: Tab::Overview,

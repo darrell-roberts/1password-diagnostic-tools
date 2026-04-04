@@ -443,7 +443,7 @@ impl App {
         lines.push("Log Files".to_string());
         lines.push(String::new());
         lines.push(format!("  Files: {}", report.logs.len()));
-        lines.push(format!("  Total Lines: {}", report.total_log_lines()));
+        lines.push(format!("  Total Lines: {}", self.total_log_lines));
         lines.push(format!("  Parsed Entries: {}", self.all_entries.len()));
 
         // Level breakdown

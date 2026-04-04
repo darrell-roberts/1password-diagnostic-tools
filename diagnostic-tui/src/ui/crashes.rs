@@ -184,7 +184,7 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         (
             entry.log_file_title.clone(),
             entry.thread.clone(),
-            entry.source.raw(),
+            entry.source.raw().into_owned(),
             entry.timestamp.with_timezone(&Local).to_string(),
             entry.message.clone(),
             entry.has_continuation(),

@@ -99,7 +99,7 @@ fn main() {
             println!("  ── Crash {} ──", i + 1);
             println!("  {cr}");
 
-            match cr.find_panic_entry_ref(&entries) {
+            match cr.find_panic_entry(&entries) {
                 Some(entry) => {
                     println!("  Log file:  {}", entry.log_file_title);
                     println!("  Thread:    {}", entry.thread);

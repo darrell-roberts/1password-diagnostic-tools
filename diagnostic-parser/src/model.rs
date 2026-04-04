@@ -13,7 +13,7 @@
 
 use crate::{
     error::{DiagnosticError, Result},
-    log_entry::{LogEntry, LogEntryRef, StringInterner},
+    log_entry::{LogEntry, LogEntryLike, LogEntryRef, StringInterner},
 };
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -707,58 +707,27 @@ impl CrashReportEntry {
         Utc.timestamp_opt(self.timestamp, 0).single()
     }
 
-    /// Find the panic [`LogEntry`] that corresponds to this crash report by
-    /// matching timestamps. The crash report records a Unix-second timestamp
-    /// while the panic log entry has a sub-second precision timestamp, so we
-    /// look for the panic entry whose UTC timestamp is closest to the crash
-    /// timestamp and within a `max_drift` tolerance (default: 2 seconds).
+    /// Find the panic log entry that corresponds to this crash report by
+    /// matching timestamps. Works with any type implementing
+    /// [`LogEntryLike`] (both [`LogEntry`] and [`LogEntryRef`]).
     ///
-    /// `entries` should be the full set of parsed log entries (e.g. from
-    /// [`DiagnosticReport::parse_log_entries`]).
+    /// The crash report records a Unix-second timestamp while the panic log
+    /// entry has sub-second precision, so we look for the panic entry whose
+    /// UTC timestamp is closest to the crash timestamp and within a
+    /// `max_drift` tolerance (default: 2 seconds).
     ///
     /// Returns `None` if no panic entry is found within the tolerance.
-    pub fn find_panic_entry<'a>(&self, entries: &'a [LogEntry]) -> Option<&'a LogEntry> {
+    pub fn find_panic_entry<'a, T: LogEntryLike>(&self, entries: &'a [T]) -> Option<&'a T> {
         self.find_panic_entry_with_drift(entries, chrono::TimeDelta::seconds(2))
     }
 
     /// Like [`find_panic_entry`](Self::find_panic_entry) but with a custom
     /// maximum drift tolerance.
-    pub fn find_panic_entry_with_drift<'a>(
+    pub fn find_panic_entry_with_drift<'a, T: LogEntryLike>(
         &self,
-        entries: &'a [LogEntry],
+        entries: &'a [T],
         max_drift: chrono::TimeDelta,
-    ) -> Option<&'a LogEntry> {
-        let crash_ts = self.timestamp_utc()?;
-
-        entries
-            .iter()
-            .filter(|e| e.is_panic())
-            .filter_map(|e| {
-                let diff = (e.timestamp_utc() - crash_ts).abs();
-                (diff <= max_drift).then_some((diff, e))
-            })
-            .min_by_key(|(diff, _)| *diff)
-            .map(|(_, entry)| entry)
-    }
-
-    /// Zero-copy version of [`find_panic_entry`](Self::find_panic_entry).
-    ///
-    /// Searches a slice of [`LogEntryRef`] values for the panic entry
-    /// matching this crash report's timestamp.
-    pub fn find_panic_entry_ref<'a>(
-        &self,
-        entries: &'a [LogEntryRef<'a>],
-    ) -> Option<&'a LogEntryRef<'a>> {
-        self.find_panic_entry_ref_with_drift(entries, chrono::TimeDelta::seconds(2))
-    }
-
-    /// Like [`find_panic_entry_ref`](Self::find_panic_entry_ref) but with a
-    /// custom maximum drift tolerance.
-    pub fn find_panic_entry_ref_with_drift<'a>(
-        &self,
-        entries: &'a [LogEntryRef<'a>],
-        max_drift: chrono::TimeDelta,
-    ) -> Option<&'a LogEntryRef<'a>> {
+    ) -> Option<&'a T> {
         let crash_ts = self.timestamp_utc()?;
 
         entries
