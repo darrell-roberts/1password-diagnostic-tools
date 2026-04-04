@@ -202,6 +202,7 @@ impl App {
                     }
                 } else if self.tab == Tab::CrashReports {
                     self.detail_focused = !self.detail_focused;
+                    self.crash_detail_cursor = 0;
                     self.crash_detail_scroll = 0;
                 }
             }
@@ -240,8 +241,15 @@ impl App {
                 self.input_mode = InputMode::Select;
             }
 
-            // Visual select mode (Crash Reports list — only when list is focused).
-            KeyCode::Char('v') if self.tab == Tab::CrashReports && !self.detail_focused => {
+            // Visual select mode (Crash Reports — detail pane focused).
+            KeyCode::Char('v') if self.tab == Tab::CrashReports && self.detail_focused => {
+                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
+                self.crash_detail_selecting = true;
+                self.input_mode = InputMode::Select;
+            }
+
+            // Visual select mode (Crash Reports list — list focused).
+            KeyCode::Char('v') if self.tab == Tab::CrashReports => {
                 self.crash_select_anchor = self.crash_list_state.selected();
                 self.input_mode = InputMode::Select;
             }
@@ -268,7 +276,14 @@ impl App {
                 self.copy_selection();
             }
 
-            // Copy crash detail or single crash entry (Crash Reports tab).
+            // Copy single line under cursor (Crash Reports — detail pane focused).
+            KeyCode::Char('y') if self.tab == Tab::CrashReports && self.detail_focused => {
+                self.crash_detail_select_anchor = Some(self.crash_detail_cursor);
+                self.crash_detail_selecting = true;
+                self.copy_crash_detail_selection();
+            }
+
+            // Copy crash entry (Crash Reports — list focused).
             KeyCode::Char('y') if self.tab == Tab::CrashReports => {
                 self.copy_crash_selection();
             }
@@ -288,6 +303,7 @@ impl App {
             }
             KeyCode::Right if self.tab == Tab::CrashReports => {
                 self.detail_focused = true;
+                self.crash_detail_cursor = 0;
                 self.crash_detail_scroll = 0;
             }
             KeyCode::Left if self.tab == Tab::Logs => {
@@ -419,6 +435,82 @@ impl App {
                 self.crash_detail_scroll = 0;
             }
             // Start a two-key z command (zz, zt, zb).
+            KeyCode::Char('z') => {
+                self.pending_z = true;
+            }
+            _ => {}
+        }
+        false
+    }
+
+    /// Handle keys while in visual-select mode inside the crash detail pane.
+    pub(super) fn handle_crash_detail_select_key(&mut self, key: KeyEvent) -> bool {
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('z') => {
+                    let half = (self.viewport.crash_detail as usize) / 2;
+                    self.crash_detail_scroll = self.crash_detail_cursor.saturating_sub(half) as u16;
+                }
+                KeyCode::Char('t') => {
+                    self.crash_detail_scroll = self.crash_detail_cursor as u16;
+                }
+                KeyCode::Char('b') => {
+                    let h = self.viewport.crash_detail as usize;
+                    self.crash_detail_scroll =
+                        (self.crash_detail_cursor + 1).saturating_sub(h) as u16;
+                }
+                _ => {}
+            }
+            return false;
+        }
+
+        match key.code {
+            KeyCode::Esc => {
+                self.crash_detail_select_anchor = None;
+                self.crash_detail_selecting = false;
+                self.input_mode = InputMode::Normal;
+            }
+            KeyCode::Char('y') => {
+                self.copy_crash_detail_selection();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if self.crash_detail_cursor > 0 {
+                    self.crash_detail_cursor -= 1;
+                    self.ensure_crash_detail_cursor_visible();
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if self.crash_detail_line_count > 0
+                    && self.crash_detail_cursor + 1 < self.crash_detail_line_count
+                {
+                    self.crash_detail_cursor += 1;
+                    self.ensure_crash_detail_cursor_visible();
+                }
+            }
+            KeyCode::PageUp => {
+                let page = self.viewport.crash_detail as usize;
+                self.crash_detail_cursor = self.crash_detail_cursor.saturating_sub(page);
+                self.ensure_crash_detail_cursor_visible();
+            }
+            KeyCode::PageDown => {
+                let page = self.viewport.crash_detail as usize;
+                if self.crash_detail_line_count > 0 {
+                    self.crash_detail_cursor =
+                        (self.crash_detail_cursor + page).min(self.crash_detail_line_count - 1);
+                }
+                self.ensure_crash_detail_cursor_visible();
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.crash_detail_cursor = 0;
+                self.ensure_crash_detail_cursor_visible();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                if self.crash_detail_line_count > 0 {
+                    self.crash_detail_cursor = self.crash_detail_line_count - 1;
+                }
+                self.ensure_crash_detail_cursor_visible();
+            }
             KeyCode::Char('z') => {
                 self.pending_z = true;
             }

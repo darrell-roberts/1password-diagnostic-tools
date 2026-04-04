@@ -13,7 +13,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, Table, Wrap},
+    widgets::{
+        Block, Borders, Cell, Paragraph, Row, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Table, Wrap,
+    },
 };
 use std::time::Duration;
 
@@ -152,18 +155,47 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
     let inner_height = area.height.saturating_sub(2) as usize;
     app.viewport.log_list = inner_height as u16;
 
+    let total = app.filtered_indices.len();
     let selection_range = app.selection_range();
+
+    // Virtual scrolling: only build Row objects for the visible window.
+    // Ensure the offset keeps the selected row visible. Navigation methods
+    // (page_up/page_down etc.) update `selected` but the offset is normally
+    // corrected by Table's render — which we bypass with the local-slice
+    // approach, so we must do it ourselves.
+    if inner_height > 0 && total > 0 {
+        // Clamp selected — ratatui's select_last() sets it to usize::MAX
+        // as a sentinel that is normally corrected during render. Since we
+        // bypass the full-table render we must correct it ourselves.
+        let selected = app.log_list_state.selected().unwrap_or(0).min(total - 1);
+        app.log_list_state.select(Some(selected));
+
+        let offset = app.log_list_state.offset();
+        let new_offset = if selected < offset {
+            selected
+        } else if selected >= offset + inner_height {
+            selected + 1 - inner_height
+        } else {
+            offset
+        };
+        *app.log_list_state.offset_mut() = new_offset;
+    }
+
+    let offset = app.log_list_state.offset();
+    let visible_start = offset;
+    let visible_end = offset.saturating_add(inner_height + 1).min(total);
+
     let query_lower = app.search_query.to_lowercase();
     let highlight_style = Style::default()
         .fg(Color::Black)
         .bg(Color::Yellow)
         .add_modifier(Modifier::BOLD);
 
-    let items = app
-        .filtered_indices
+    let items: Vec<Row> = app.filtered_indices[visible_start..visible_end]
         .iter()
         .enumerate()
-        .map(|(display_idx, &entry_idx)| {
+        .map(|(local_idx, &entry_idx)| {
+            let display_idx = visible_start + local_idx;
             let entry = &app.all_entries[entry_idx];
             let is_in_selection = selection_range
                 .is_some_and(|(start, end)| display_idx >= start && display_idx <= end);
@@ -212,7 +244,7 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
             ])
             .style(style)
         })
-        .collect::<Vec<_>>();
+        .collect();
 
     // Show "Copied!" flash or selection count in the title.
     let show_copied = app
@@ -220,13 +252,13 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied {
-        let count = selection_range.map_or(1, |(s, e)| e - s + 1);
+        let count = app.copied_count;
         format!(" Logs — Copied {count} entries! ✓ ")
     } else if let Some((start, end)) = selection_range {
         let count = end - start + 1;
         format!(
             " Logs [{}/{}] — {} selected (y:copy  Esc:cancel) ",
-            if app.filtered_indices.is_empty() {
+            if total == 0 {
                 0
             } else {
                 app.log_list_state
@@ -234,21 +266,21 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
                     .map(|i| i + 1)
                     .unwrap_or_default()
             },
-            app.filtered_indices.len(),
+            total,
             count,
         )
     } else {
         format!(
             " Logs [{}/{}] ",
-            if app.filtered_indices.is_empty() {
+            if total == 0 {
                 0
             } else {
                 app.log_list_state
                     .selected()
-                    .map(|i| i.saturating_add(1).clamp(0, app.filtered_indices.len()))
+                    .map(|i| i.saturating_add(1).clamp(0, total))
                     .unwrap_or_default()
             },
-            app.filtered_indices.len(),
+            total,
         )
     };
 
@@ -269,6 +301,12 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Length(2),
     ];
 
+    // Render only the visible slice with local indices for the Table widget.
+    let saved_selected = app.log_list_state.selected();
+    let local_selected = saved_selected.and_then(|s| s.checked_sub(visible_start));
+    app.log_list_state.select(local_selected);
+    *app.log_list_state.offset_mut() = 0;
+
     let table = Table::new(items, widths)
         .block(
             Block::default()
@@ -279,6 +317,13 @@ fn draw_log_list(frame: &mut Frame, app: &mut App, area: Rect) {
         .row_highlight_style(Style::new().reversed());
 
     frame.render_stateful_widget(table, area, &mut app.log_list_state);
+
+    // Restore global state after rendering.
+    app.log_list_state.select(saved_selected);
+    *app.log_list_state.offset_mut() = offset;
+
+    // Rebuild scrollbar state each frame from the selected position.
+    app.log_list_scrollbar = ScrollbarState::new(total).position(saved_selected.unwrap_or(0));
     frame.render_stateful_widget(
         Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
@@ -325,7 +370,7 @@ fn draw_log_detail(frame: &mut Frame, app: &mut App, area: Rect) {
     let detail_sel = app.detail_selection_range();
 
     let title = if show_copied && app.detail_focused {
-        let count = detail_sel.map_or(1, |(s, e)| e - s + 1);
+        let count = app.copied_count;
         format!(" Detail — Copied {count} lines! ✓ ")
     } else if let Some((start, end)) = detail_sel {
         let count = end - start + 1;

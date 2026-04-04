@@ -29,15 +29,18 @@ impl App {
                     self.log_list_state.up();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    self.log_list_scrollbar.prev();
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    self.crash_detail_scroll = self.crash_detail_scroll.saturating_sub(1);
+                    if self.crash_detail_cursor > 0 {
+                        self.crash_detail_cursor -= 1;
+                        self.ensure_crash_detail_cursor_visible();
+                    }
                 } else {
                     self.crash_list_state.up();
                     self.crash_detail_scroll = 0;
+                    self.crash_detail_cursor = 0;
                 }
             }
         }
@@ -64,15 +67,20 @@ impl App {
                     self.log_list_state.down();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    self.log_list_scrollbar.next();
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    self.crash_detail_scroll += 1;
+                    if self.crash_detail_line_count > 0
+                        && self.crash_detail_cursor + 1 < self.crash_detail_line_count
+                    {
+                        self.crash_detail_cursor += 1;
+                        self.ensure_crash_detail_cursor_visible();
+                    }
                 } else {
                     self.crash_list_state.down();
                     self.crash_detail_scroll = 0;
+                    self.crash_detail_cursor = 0;
                 }
             }
         }
@@ -95,19 +103,18 @@ impl App {
                     self.log_list_state.page_up(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    for _ in 0..page {
-                        self.log_list_scrollbar.prev();
-                    }
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    let page = self.viewport.crash_detail;
-                    self.crash_detail_scroll = self.crash_detail_scroll.saturating_sub(page);
+                    let page = self.viewport.crash_detail as usize;
+                    self.crash_detail_cursor = self.crash_detail_cursor.saturating_sub(page);
+                    self.ensure_crash_detail_cursor_visible();
                 } else {
                     let page = self.viewport.crash_list;
                     self.crash_list_state.page_up(page);
                     self.crash_detail_scroll = 0;
+                    self.crash_detail_cursor = 0;
                 }
             }
         }
@@ -136,15 +143,16 @@ impl App {
                     self.log_list_state.page_down(page);
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    for _ in 0..page {
-                        self.log_list_scrollbar.next();
-                    }
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    let page = self.viewport.crash_detail;
-                    self.crash_detail_scroll += page;
+                    let page = self.viewport.crash_detail as usize;
+                    if self.crash_detail_line_count > 0 {
+                        self.crash_detail_cursor =
+                            (self.crash_detail_cursor + page).min(self.crash_detail_line_count - 1);
+                    }
+                    self.ensure_crash_detail_cursor_visible();
                 } else {
                     let page = self.viewport.crash_list;
                     self.crash_list_state.page_down(page);
@@ -168,15 +176,16 @@ impl App {
                     self.log_list_state.home();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    self.log_list_scrollbar.first();
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    self.crash_detail_scroll = 0;
+                    self.crash_detail_cursor = 0;
+                    self.ensure_crash_detail_cursor_visible();
                 } else {
                     self.crash_list_state.home();
                     self.crash_detail_scroll = 0;
+                    self.crash_detail_cursor = 0;
                 }
             }
         }
@@ -200,12 +209,14 @@ impl App {
                     self.log_list_state.end();
                     self.detail_scroll = 0;
                     self.detail_cursor = 0;
-                    self.log_list_scrollbar.last();
                 }
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    self.crash_detail_scroll = u16::MAX;
+                    if self.crash_detail_line_count > 0 {
+                        self.crash_detail_cursor = self.crash_detail_line_count - 1;
+                    }
+                    self.ensure_crash_detail_cursor_visible();
                 } else {
                     self.crash_list_state.end();
                     self.crash_detail_scroll = 0;
@@ -238,7 +249,8 @@ impl App {
             }
             Tab::CrashReports => {
                 if self.detail_focused {
-                    // No cursor concept in the detail pane — nothing to do.
+                    let half = (self.viewport.crash_detail as usize) / 2;
+                    self.crash_detail_scroll = self.crash_detail_cursor.saturating_sub(half) as u16;
                 } else {
                     let half = (self.viewport.crash_list as usize) / 2;
                     let selected = self.crash_list_state.selected().unwrap_or_default();
@@ -263,7 +275,9 @@ impl App {
                 }
             }
             Tab::CrashReports => {
-                if !self.detail_focused {
+                if self.detail_focused {
+                    self.crash_detail_scroll = self.crash_detail_cursor as u16;
+                } else {
                     let selected = self.crash_list_state.selected().unwrap_or(0);
                     *self.crash_list_state.offset_mut() = selected;
                 }
@@ -289,7 +303,11 @@ impl App {
                 }
             }
             Tab::CrashReports => {
-                if !self.detail_focused {
+                if self.detail_focused {
+                    let height = self.viewport.crash_detail as usize;
+                    self.crash_detail_scroll =
+                        (self.crash_detail_cursor + 1).saturating_sub(height) as u16;
+                } else {
                     let height = self.viewport.crash_list as usize;
                     let selected = self.crash_list_state.selected().unwrap_or_default();
                     *self.crash_list_state.offset_mut() = (selected + 1).saturating_sub(height);
@@ -321,6 +339,17 @@ impl App {
             self.detail_scroll = self.detail_cursor as u16;
         } else if viewport_h > 0 && self.detail_cursor >= scroll + viewport_h {
             self.detail_scroll = (self.detail_cursor - viewport_h + 1) as u16;
+        }
+    }
+
+    /// Ensure the crash detail cursor line is visible within the current viewport.
+    pub(crate) fn ensure_crash_detail_cursor_visible(&mut self) {
+        let viewport_h = self.viewport.crash_detail as usize;
+        let scroll = self.crash_detail_scroll as usize;
+        if self.crash_detail_cursor < scroll {
+            self.crash_detail_scroll = self.crash_detail_cursor as u16;
+        } else if viewport_h > 0 && self.crash_detail_cursor >= scroll + viewport_h {
+            self.crash_detail_scroll = (self.crash_detail_cursor - viewport_h + 1) as u16;
         }
     }
 

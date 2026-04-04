@@ -45,6 +45,13 @@ impl App {
         Some((anchor.min(cursor), anchor.max(cursor)))
     }
 
+    /// Returns the ordered (start, end) selection range for the crash detail if in select mode.
+    pub fn crash_detail_selection_range(&self) -> Option<(usize, usize)> {
+        let anchor = self.crash_detail_select_anchor?;
+        let cursor = self.crash_detail_cursor;
+        Some((anchor.min(cursor), anchor.max(cursor)))
+    }
+
     // -----------------------------------------------------------------------
     // Copy: log list
     // -----------------------------------------------------------------------
@@ -55,6 +62,7 @@ impl App {
             return;
         };
 
+        let count = end - start + 1;
         let text: String = (start..=end)
             .filter_map(|i| self.filtered_indices.get(i).copied())
             .filter_map(|idx| self.all_entries.get(idx))
@@ -79,6 +87,7 @@ impl App {
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
+            self.copied_count = count;
         }
 
         // Exit select mode.
@@ -97,12 +106,15 @@ impl App {
         };
 
         let lines = self.build_detail_plain_lines();
-        let text: String = lines[start..=end.min(lines.len().saturating_sub(1))].join("\n");
+        let clamped_end = end.min(lines.len().saturating_sub(1));
+        let count = clamped_end - start + 1;
+        let text: String = lines[start..=clamped_end].join("\n");
 
         if let Some(ref mut cb) = self.clipboard
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
+            self.copied_count = count;
         }
 
         // Exit detail select mode.
@@ -229,15 +241,102 @@ impl App {
             .collect::<Vec<_>>()
             .join("\n\n---\n\n");
 
+        let count = end - start + 1;
         if let Some(ref mut cb) = self.clipboard
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
+            self.copied_count = count;
         }
 
         // Exit select mode.
         self.crash_select_anchor = None;
         self.input_mode = InputMode::Normal;
+    }
+
+    // -----------------------------------------------------------------------
+    // Copy: crash detail pane
+    // -----------------------------------------------------------------------
+
+    /// Copy the selected crash detail lines to the system clipboard.
+    pub(super) fn copy_crash_detail_selection(&mut self) {
+        let Some((start, end)) = self.crash_detail_selection_range() else {
+            return;
+        };
+
+        let lines = self.build_crash_detail_plain_lines();
+        let clamped_end = end.min(lines.len().saturating_sub(1));
+        let count = clamped_end - start + 1;
+        let text: String = lines[start..=clamped_end].join("\n");
+
+        if let Some(ref mut cb) = self.clipboard
+            && cb.set_text(text).is_ok()
+        {
+            self.copied_at = Some(Instant::now());
+            self.copied_count = count;
+        }
+
+        self.crash_detail_select_anchor = None;
+        self.crash_detail_selecting = false;
+        self.input_mode = InputMode::Normal;
+    }
+
+    /// Build the plain-text lines shown in the crash detail pane for the
+    /// currently selected crash report. Returns an empty vec when nothing is selected.
+    pub fn build_crash_detail_plain_lines(&self) -> Vec<String> {
+        let Some(crash) = self.selected_crash_report() else {
+            return Vec::new();
+        };
+
+        let ts = crash
+            .timestamp_utc()
+            .map(|d| {
+                d.with_timezone(&Local)
+                    .format("%Y-%m-%d %H:%M:%S")
+                    .to_string()
+            })
+            .unwrap_or_else(|| format!("{}", crash.timestamp));
+
+        let mut lines = vec![
+            format!("Report ID: {}", crash.report_id),
+            format!("Type:      {}", crash.report_type),
+            format!("Timestamp: {}", ts),
+            format!("Tag:       {}", crash.diagnostic_report_tag),
+            String::new(),
+        ];
+
+        if let Some(entry) = self.selected_crash_panic_entry() {
+            lines.push("Linked Panic Entry".to_string());
+            lines.push(String::new());
+            lines.push(format!("Log File:  {}", entry.log_file_title));
+            lines.push(format!("Thread:    {}", entry.thread));
+            lines.push(format!("Source:    {}", entry.source.raw()));
+            lines.push(format!(
+                "Timestamp: {}",
+                entry.timestamp.with_timezone(&Local)
+            ));
+            lines.push(String::new());
+            lines.push("Message:".to_string());
+            lines.push(String::new());
+            for msg_line in entry.message.lines() {
+                lines.push(msg_line.to_string());
+            }
+            if entry.has_continuation() {
+                lines.push(String::new());
+                lines.push(format!("Call Stack ({} frames):", entry.continuation.len()));
+                lines.push(String::new());
+                for frame_line in &entry.continuation {
+                    lines.push(frame_line.trim_start().to_string());
+                }
+            } else {
+                lines.push(String::new());
+                lines.push("(no stack trace attached to panic entry)".to_string());
+            }
+        } else {
+            lines.push("No matching panic log entry found.".to_string());
+        }
+
+        lines
     }
 
     // -----------------------------------------------------------------------
@@ -250,12 +349,14 @@ impl App {
             return;
         };
 
+        let count = end - start + 1;
         let text = self.build_overview_plain_text(start, end);
 
         if let Some(ref mut cb) = self.clipboard
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
+            self.copied_count = count;
         }
 
         // Exit select mode.

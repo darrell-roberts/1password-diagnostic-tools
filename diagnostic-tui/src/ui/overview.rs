@@ -244,7 +244,7 @@ pub fn draw_overview(frame: &mut Frame, app: &mut App, area: Rect) {
         .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied && app.tab == Tab::Overview {
-        let count = overview_selection.map_or(1, |(s, e)| e - s + 1);
+        let count = app.copied_count;
         format!(" Overview — Copied {count} lines! ✓ ")
     } else if in_select {
         let (start, end) = overview_selection.unwrap_or((cursor, cursor));

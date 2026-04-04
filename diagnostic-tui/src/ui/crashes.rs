@@ -2,7 +2,7 @@
 
 use crate::{
     app::{App, Tab},
-    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL},
+    ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, HIGHLIGHT_BG, SELECT_BG},
 };
 use chrono::Local;
 use ratatui::{
@@ -97,7 +97,7 @@ fn draw_crash_list(frame: &mut Frame, app: &mut App, area: Rect) {
             .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
     let title = if show_copied {
-        let count = crash_selection_range.map_or(1, |(s, e)| e - s + 1);
+        let count = app.copied_count;
         format!(" Crashes — Copied {count} entries! ✓ ")
     } else if let Some((start, end)) = crash_selection_range {
         let count = end - start + 1;
@@ -162,26 +162,6 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
         BORDER_NORMAL
     };
 
-    let show_copied = app
-        .copied_at
-        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
-
-    let (detail_title, detail_title_style) = if show_copied {
-        (
-            " Crash Detail — Copied! ✓ ".to_string(),
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else {
-        (" Crash Detail ".to_string(), Style::default())
-    };
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color))
-        .title(Span::styled(detail_title, detail_title_style));
-
     // Clone data from crash report and optional panic entry to avoid borrow conflicts.
     let crash_data = app.selected_crash_report().map(|crash| {
         let ts = crash
@@ -211,6 +191,37 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
             entry.continuation.clone(),
         )
     });
+
+    // Build title with selection / copied feedback.
+    let show_copied = app
+        .copied_at
+        .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
+    let detail_sel = app.crash_detail_selection_range();
+
+    let (detail_title, detail_title_style) = if show_copied && app.detail_focused {
+        let count = app.copied_count;
+        (
+            format!(" Crash Detail — Copied {count} lines! ✓ "),
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
+    } else if let Some((start, end)) = detail_sel {
+        let count = end - start + 1;
+        (
+            format!(" Crash Detail — {} selected (y:copy  Esc:cancel) ", count),
+            Style::default().fg(Color::Yellow),
+        )
+    } else if app.detail_focused {
+        (" Crash Detail (focused) ".to_string(), Style::default())
+    } else {
+        (" Crash Detail ".to_string(), Style::default())
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color))
+        .title(Span::styled(detail_title, detail_title_style));
 
     let Some((report_id, report_type, ts, tag)) = crash_data else {
         let empty = Paragraph::new("No crash report selected")
@@ -340,6 +351,46 @@ fn draw_crash_detail(frame: &mut Frame, app: &mut App, area: Rect) {
                 "occurred outside the captured log window.",
                 Style::default().fg(Color::DarkGray),
             )));
+        }
+    }
+
+    // Track line count so the app can clamp cursor navigation.
+    let total_lines = lines.len();
+    app.crash_detail_line_count = total_lines;
+
+    // Clamp cursor.
+    if total_lines > 0 && app.crash_detail_cursor >= total_lines {
+        app.crash_detail_cursor = total_lines - 1;
+    }
+
+    // Apply cursor / selection highlighting when the detail pane is focused.
+    if app.detail_focused {
+        let selection_range = app.crash_detail_selection_range();
+        for (i, line) in lines.iter_mut().enumerate() {
+            let is_cursor = i == app.crash_detail_cursor;
+            let is_in_selection =
+                selection_range.is_some_and(|(start, end)| i >= start && i <= end);
+
+            if is_cursor {
+                *line = Line::from(
+                    line.spans
+                        .iter()
+                        .map(|span| {
+                            Span::styled(
+                                span.content.clone(),
+                                span.style.bg(HIGHLIGHT_BG).add_modifier(Modifier::BOLD),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                );
+            } else if is_in_selection {
+                *line = Line::from(
+                    line.spans
+                        .iter()
+                        .map(|span| Span::styled(span.content.clone(), span.style.bg(SELECT_BG)))
+                        .collect::<Vec<_>>(),
+                );
+            }
         }
     }
 

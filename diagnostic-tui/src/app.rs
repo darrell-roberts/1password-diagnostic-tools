@@ -76,6 +76,18 @@ pub struct App {
     /// Vertical scroll offset inside the crash detail pane.
     pub crash_detail_scroll: u16,
 
+    /// Cursor line index in the crash detail content.
+    pub crash_detail_cursor: usize,
+
+    /// Anchor line index for visual selection mode on the crash detail pane.
+    pub crash_detail_select_anchor: Option<usize>,
+
+    /// Total number of lines in the crash detail content (set during rendering).
+    pub crash_detail_line_count: usize,
+
+    /// Whether the crash detail pane is in select mode.
+    pub crash_detail_selecting: bool,
+
     /// Overview tab scroll offset.
     pub overview_scroll: u16,
 
@@ -132,6 +144,9 @@ pub struct App {
     /// Instant when the last successful copy occurred, used to flash feedback.
     pub copied_at: Option<Instant>,
 
+    /// Number of items/lines in the last successful copy, for the flash message.
+    pub copied_count: usize,
+
     /// Whether the previous keypress was `z`, awaiting the second key of a
     /// two-key `z` command (`zz`, `zt`, `zb`).
     pub pending_z: bool,
@@ -168,6 +183,10 @@ impl App {
             detail_selecting: false,
             crash_list_state: TableState::new().with_selected(selected_crash_report),
             crash_detail_scroll: 0,
+            crash_detail_cursor: 0,
+            crash_detail_select_anchor: None,
+            crash_detail_line_count: 0,
+            crash_detail_selecting: false,
             overview_scroll: 0,
             overview_cursor: 0,
             overview_select_anchor: None,
@@ -184,6 +203,7 @@ impl App {
             crash_select_anchor: None,
             clipboard: Clipboard::new().ok(),
             copied_at: None,
+            copied_count: 0,
             pending_z: false,
             log_list_scrollbar: ScrollbarState::new(total_logs),
         }
@@ -329,8 +349,8 @@ impl App {
     /// Get the currently selected log entry (if any).
     pub fn selected_log_entry(&self) -> Option<&LogEntry> {
         let selected = self.log_list_state.selected()?;
-        // let idx = *self.filtered_indices.get(self.log_list_state.selected)?;
-        self.all_entries.get(selected)
+        let idx = *self.filtered_indices.get(selected)?;
+        self.all_entries.get(idx)
     }
 
     /// Get the currently selected crash report (if any).
@@ -371,6 +391,9 @@ impl App {
             InputMode::Search => self.handle_search_key(key),
             InputMode::Normal => self.handle_normal_key(key),
             InputMode::Select if self.tab == Tab::Overview => self.handle_overview_select_key(key),
+            InputMode::Select if self.tab == Tab::CrashReports && self.crash_detail_selecting => {
+                self.handle_crash_detail_select_key(key)
+            }
             InputMode::Select if self.tab == Tab::CrashReports => self.handle_crash_select_key(key),
             InputMode::Select if self.detail_selecting => self.handle_detail_select_key(key),
             InputMode::Select => self.handle_select_key(key),
