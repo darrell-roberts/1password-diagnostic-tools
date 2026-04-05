@@ -378,9 +378,15 @@ impl App {
             lines.push(format!("    Storage Used: {}", storage_str));
             lines.push(format!("    Vaults: {}", account.vaults.len()));
 
+            if !account.vaults.is_empty() {
+                lines.push(format!(
+                    "      {:<14}  {:<36}  {:>8}  {:>10}  {:>9}",
+                    "Vault Type", "UUID", "Active", "Archived", "Deleted"
+                ));
+            }
             for vault in &account.vaults {
                 lines.push(format!(
-                    "      {} {}  {} active, {} archived, {} deleted",
+                    "      {:<14}  {:<36}  {:>8}  {:>10}  {:>9}",
                     vault.vault_type,
                     vault.uuid,
                     vault.items.active,
