@@ -239,6 +239,15 @@ impl<'a> LogsState<'a> {
 // Search navigation
 // -----------------------------------------------------------------------
 
+fn contains_case_insensitive(haystack: &str, needle_lower: &str) -> bool {
+    // needle_lower is already lowercased once by the caller.
+    let needle = needle_lower.as_bytes();
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .any(|window| window.eq_ignore_ascii_case(needle))
+}
+
 /// Returns `true` if the entry at `all_entries[idx]` matches the current
 /// search query (case-insensitive substring in message or continuation).
 fn entry_matches_query(all_entries: &[LogEntryRef<'_>], idx: usize, query_lower: &str) -> bool {
@@ -246,9 +255,9 @@ fn entry_matches_query(all_entries: &[LogEntryRef<'_>], idx: usize, query_lower:
         return false;
     }
     let entry = &all_entries[idx];
-    entry.message.to_lowercase().contains(query_lower)
+    contains_case_insensitive(entry.message, query_lower)
         || entry
             .continuation
             .iter()
-            .any(|c| c.to_lowercase().contains(query_lower))
+            .any(|c| contains_case_insensitive(c, query_lower))
 }
