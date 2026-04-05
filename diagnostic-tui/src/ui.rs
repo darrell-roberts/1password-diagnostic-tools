@@ -8,6 +8,7 @@
 //! - [`crashes`] — rendering for the Crash Reports tab (crash list and detail pane)
 //! - [`popups`] — popup overlays (source picker, log file picker, help screen)
 
+mod analysis;
 mod crashes;
 mod helpers;
 mod logs;
@@ -23,6 +24,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, StatefulWidget, Tabs},
 };
 
+use analysis::AnalysisWidget;
 use crashes::CrashReportsWidget;
 use helpers::TAB_ACTIVE;
 use logs::LogsWidget;
@@ -85,6 +87,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             }
             .render(outer[1], frame.buffer_mut(), &mut app.crashes);
         }
+        Tab::Analysis => {
+            AnalysisWidget {
+                data: &app.analysis_data,
+                input_mode: app.input_mode,
+                tab: app.tab,
+                copied_at: app.copied_at,
+                copied_count: app.copied_count,
+            }
+            .render(outer[1], frame.buffer_mut(), &mut app.analysis);
+        }
     }
 
     draw_status_bar(frame, app, outer[2]);
@@ -114,6 +126,7 @@ fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 Tab::Overview => "1",
                 Tab::Logs => "2",
                 Tab::CrashReports => "3",
+                Tab::Analysis => "4",
             };
             Line::from(vec![
                 Span::styled(format!(" {num}:"), Style::default().fg(Color::DarkGray)),
@@ -149,6 +162,7 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             Tab::Logs => " LOG LIST ",
             Tab::CrashReports if app.crashes.detail_focused => " CRASH DETAIL ",
             Tab::CrashReports => " CRASH LIST ",
+            Tab::Analysis => " ANALYSIS ",
         },
     };
 

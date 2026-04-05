@@ -56,6 +56,12 @@ impl App<'_> {
                     self.crashes.detail_cursor = 0;
                 }
             }
+            Tab::Analysis => {
+                if self.analysis.cursor > 0 {
+                    self.analysis.cursor -= 1;
+                    self.analysis.ensure_cursor_visible();
+                }
+            }
         }
     }
 
@@ -97,6 +103,14 @@ impl App<'_> {
                     self.crashes.detail_cursor = 0;
                 }
             }
+            Tab::Analysis => {
+                if self.analysis.line_count > 0
+                    && self.analysis.cursor + 1 < self.analysis.line_count
+                {
+                    self.analysis.cursor += 1;
+                    self.analysis.ensure_cursor_visible();
+                }
+            }
         }
     }
 
@@ -130,6 +144,11 @@ impl App<'_> {
                     self.crashes.detail_scroll = 0;
                     self.crashes.detail_cursor = 0;
                 }
+            }
+            Tab::Analysis => {
+                let page = self.analysis.viewport_height as usize;
+                self.analysis.cursor = self.analysis.cursor.saturating_sub(page);
+                self.analysis.ensure_cursor_visible();
             }
         }
     }
@@ -173,6 +192,14 @@ impl App<'_> {
                     self.crashes.detail_scroll = 0;
                 }
             }
+            Tab::Analysis => {
+                let page = self.analysis.viewport_height as usize;
+                if self.analysis.line_count > 0 {
+                    self.analysis.cursor =
+                        (self.analysis.cursor + page).min(self.analysis.line_count - 1);
+                }
+                self.analysis.ensure_cursor_visible();
+            }
         }
     }
 
@@ -201,6 +228,10 @@ impl App<'_> {
                     self.crashes.detail_scroll = 0;
                     self.crashes.detail_cursor = 0;
                 }
+            }
+            Tab::Analysis => {
+                self.analysis.cursor = 0;
+                self.analysis.ensure_cursor_visible();
             }
         }
     }
@@ -235,6 +266,12 @@ impl App<'_> {
                     self.crashes.list_state.end();
                     self.crashes.detail_scroll = 0;
                 }
+            }
+            Tab::Analysis => {
+                if self.analysis.line_count > 0 {
+                    self.analysis.cursor = self.analysis.line_count - 1;
+                }
+                self.analysis.ensure_cursor_visible();
             }
         }
     }
@@ -272,6 +309,10 @@ impl App<'_> {
                     *self.crashes.list_state.offset_mut() = selected.saturating_sub(half);
                 }
             }
+            Tab::Analysis => {
+                let half = (self.analysis.viewport_height as usize) / 2;
+                self.analysis.scroll = self.analysis.cursor.saturating_sub(half) as u16;
+            }
         }
     }
 
@@ -296,6 +337,9 @@ impl App<'_> {
                     let selected = self.crashes.list_state.selected().unwrap_or(0);
                     *self.crashes.list_state.offset_mut() = selected;
                 }
+            }
+            Tab::Analysis => {
+                self.analysis.scroll = self.analysis.cursor as u16;
             }
         }
     }
@@ -328,6 +372,10 @@ impl App<'_> {
                     let selected = self.crashes.list_state.selected().unwrap_or_default();
                     *self.crashes.list_state.offset_mut() = (selected + 1).saturating_sub(height);
                 }
+            }
+            Tab::Analysis => {
+                let height = self.analysis.viewport_height as usize;
+                self.analysis.scroll = (self.analysis.cursor + 1).saturating_sub(height) as u16;
             }
         }
     }

@@ -22,6 +22,7 @@ pub(super) enum PaneSelectTarget {
     Overview,
     LogDetail,
     CrashDetail,
+    Analysis,
 }
 
 impl App<'_> {
@@ -112,6 +113,12 @@ impl App<'_> {
             }
             KeyCode::Char('3') => {
                 self.tab = Tab::CrashReports;
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
+                self.logs.show_detail = false;
+            }
+            KeyCode::Char('4') => {
+                self.tab = Tab::Analysis;
                 self.logs.detail_focused = false;
                 self.crashes.detail_focused = false;
                 self.logs.show_detail = false;
@@ -243,6 +250,12 @@ impl App<'_> {
                 self.input_mode = InputMode::Select;
             }
 
+            // Visual select mode (Analysis tab).
+            KeyCode::Char('v') if self.tab == Tab::Analysis => {
+                self.analysis.select_anchor = Some(self.analysis.cursor);
+                self.input_mode = InputMode::Select;
+            }
+
             // Visual select mode (Logs tab — detail pane focused).
             KeyCode::Char('v')
                 if self.tab == Tab::Logs && self.logs.show_detail && self.logs.detail_focused =>
@@ -276,6 +289,12 @@ impl App<'_> {
                 self.overview.cursor = self.overview.scroll as usize;
                 self.overview.select_anchor = Some(self.overview.cursor);
                 self.copy_overview_selection();
+            }
+
+            // Copy single line under cursor (Analysis tab).
+            KeyCode::Char('y') if self.tab == Tab::Analysis => {
+                self.analysis.select_anchor = Some(self.analysis.cursor);
+                self.copy_analysis_selection();
             }
 
             // Copy single line under cursor (Logs tab — detail pane focused).
@@ -448,6 +467,12 @@ impl App<'_> {
                 self.crashes.detail_line_count,
                 self.crashes.detail_viewport_height,
             ),
+            PaneSelectTarget::Analysis => (
+                &mut self.analysis.cursor,
+                &mut self.analysis.scroll,
+                self.analysis.line_count,
+                self.analysis.viewport_height,
+            ),
         };
 
         if self.pending_z {
@@ -519,6 +544,7 @@ impl App<'_> {
                         self.crashes.detail_select_anchor = None;
                         self.crashes.detail_selecting = false;
                     }
+                    PaneSelectTarget::Analysis => self.analysis.select_anchor = None,
                 }
                 self.input_mode = InputMode::Normal;
             }
@@ -526,6 +552,7 @@ impl App<'_> {
                 PaneSelectTarget::Overview => self.copy_overview_selection(),
                 PaneSelectTarget::LogDetail => self.copy_detail_selection(),
                 PaneSelectTarget::CrashDetail => self.copy_crash_detail_selection(),
+                PaneSelectTarget::Analysis => self.copy_analysis_selection(),
             },
             _ => {}
         }

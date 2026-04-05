@@ -1,9 +1,10 @@
-//! State for the Overview tab.
+//! Shared scrollable-pane state used by the Overview and Analysis tabs.
 
 use super::navigation::ensure_cursor_visible;
 
-/// Persistent state for the Overview tab.
-pub struct OverviewState {
+/// Reusable scrollable-pane state shared by Overview, Analysis, and any
+/// future cursor-based single-pane tabs.
+pub struct ScrollablePaneState {
     /// Scroll offset.
     pub scroll: u16,
     /// Cursor line index.
@@ -16,7 +17,7 @@ pub struct OverviewState {
     pub viewport_height: u16,
 }
 
-impl Default for OverviewState {
+impl Default for ScrollablePaneState {
     fn default() -> Self {
         Self {
             scroll: 0,
@@ -28,7 +29,7 @@ impl Default for OverviewState {
     }
 }
 
-impl OverviewState {
+impl ScrollablePaneState {
     /// Ordered `(start, end)` selection range, if in select mode.
     pub fn selection_range(&self) -> Option<(usize, usize)> {
         let anchor = self.select_anchor?;
@@ -40,3 +41,6 @@ impl OverviewState {
         ensure_cursor_visible(self.cursor, &mut self.scroll, self.viewport_height);
     }
 }
+
+/// Persistent state for the Overview tab.
+pub type OverviewState = ScrollablePaneState;

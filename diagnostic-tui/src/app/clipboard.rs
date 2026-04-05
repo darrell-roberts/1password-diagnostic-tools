@@ -293,6 +293,33 @@ impl App<'_> {
         self.input_mode = InputMode::Normal;
     }
 
+    // -----------------------------------------------------------------------
+    // Copy: analysis
+    // -----------------------------------------------------------------------
+
+    /// Copy the selected analysis lines to the system clipboard.
+    pub(super) fn copy_analysis_selection(&mut self) {
+        let Some((start, end)) = self.analysis.selection_range() else {
+            return;
+        };
+
+        let lines = self.analysis_data.build_plain_text_lines();
+        let clamped_end = end.min(lines.len().saturating_sub(1));
+        let count = clamped_end - start + 1;
+        let text = lines[start..=clamped_end].join("\n");
+
+        if let Some(cb) = self.clipboard.as_mut()
+            && cb.set_text(text).is_ok()
+        {
+            self.copied_at = Some(Instant::now());
+            self.copied_count = count;
+        }
+
+        // Exit select mode.
+        self.analysis.select_anchor = None;
+        self.input_mode = InputMode::Normal;
+    }
+
     /// Build plain-text representation of overview lines in the given range.
     pub fn build_overview_plain_text(&self, start: usize, end: usize) -> String {
         let lines = self.build_overview_text_lines();
