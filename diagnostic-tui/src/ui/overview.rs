@@ -2,7 +2,8 @@
 
 use crate::{
     app::{InputMode, OverviewState, Tab},
-    ui::helpers::{BORDER_FOCUSED, SELECT_BG, format_bytes, kv_line, kv_line_indent},
+    format_bytes,
+    ui::helpers::{BORDER_FOCUSED, SELECT_BG, kv_line, kv_line_indent},
 };
 use diagnostic_parser::{
     log_entry::{LogEntry, LogLevel},

@@ -5,11 +5,15 @@
 //! build plain-text representations of the overview, log detail, and
 //! crash report panes.
 
-use super::App;
-use crate::app::state::InputMode;
+use crate::{
+    app::{App, state::InputMode},
+    format_bytes,
+};
 use chrono::Local;
-use diagnostic_parser::log_entry::{LogEntry, LogLevel};
-use diagnostic_parser::model::CrashReportEntry;
+use diagnostic_parser::{
+    log_entry::{LogEntry, LogLevel},
+    model::CrashReportEntry,
+};
 use std::time::Instant;
 
 /// Build plain-text lines for a single crash report and its linked panic entry.
@@ -35,31 +39,36 @@ fn crash_report_plain_lines(
     ];
 
     if let Some(entry) = panic_entry {
-        lines.push("Linked Panic Entry".to_string());
-        lines.push(String::new());
-        lines.push(format!("Log File:  {}", entry.log_file_title));
-        lines.push(format!("Thread:    {}", entry.thread));
-        lines.push(format!("Source:    {}", entry.source.raw()));
-        lines.push(format!(
-            "Timestamp: {}",
-            entry.timestamp.with_timezone(&Local)
-        ));
-        lines.push(String::new());
-        lines.push("Message:".to_string());
-        lines.push(String::new());
-        for msg_line in entry.message.lines() {
-            lines.push(msg_line.to_string());
-        }
+        lines.extend([
+            "Linked Panic Entry".to_string(),
+            String::new(),
+            format!("Log File:  {}", entry.log_file_title),
+            format!("Thread:    {}", entry.thread),
+            format!("Source:    {}", entry.source.raw()),
+            format!("Timestamp: {}", entry.timestamp.with_timezone(&Local)),
+            String::new(),
+            "Message:".to_string(),
+            String::new(),
+        ]);
+        lines.extend(entry.message.lines().map(ToString::to_string));
+
         if entry.has_continuation() {
-            lines.push(String::new());
-            lines.push(format!("Call Stack ({} frames):", entry.continuation.len()));
-            lines.push(String::new());
-            for frame_line in &entry.continuation {
-                lines.push(frame_line.trim_start().to_string());
-            }
+            lines.extend([
+                String::new(),
+                format!("Call Stack ({} frames):", entry.continuation.len()),
+                String::new(),
+            ]);
+            lines.extend(
+                entry
+                    .continuation
+                    .iter()
+                    .map(|frame_line| frame_line.trim_start().to_string()),
+            );
         } else {
-            lines.push(String::new());
-            lines.push("(no stack trace attached to panic entry)".to_string());
+            lines.extend([
+                String::new(),
+                "(no stack trace attached to panic entry)".to_string(),
+            ])
         }
     } else {
         lines.push("No matching panic log entry found.".to_string());
@@ -80,7 +89,7 @@ impl App {
         };
 
         let count = end - start + 1;
-        let text: String = (start..=end)
+        let text = (start..=end)
             .filter_map(|i| self.logs.filtered_indices.get(i).copied())
             .filter_map(|idx| self.all_entries.get(idx))
             .map(|entry| {
@@ -100,7 +109,7 @@ impl App {
             .collect::<Vec<_>>()
             .join("\n");
 
-        if let Some(ref mut cb) = self.clipboard
+        if let Some(cb) = self.clipboard.as_mut()
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
@@ -125,9 +134,9 @@ impl App {
         let lines = self.build_detail_plain_lines();
         let clamped_end = end.min(lines.len().saturating_sub(1));
         let count = clamped_end - start + 1;
-        let text: String = lines[start..=clamped_end].join("\n");
+        let text = lines[start..=clamped_end].join("\n");
 
-        if let Some(ref mut cb) = self.clipboard
+        if let Some(cb) = self.clipboard.as_mut()
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
@@ -142,23 +151,17 @@ impl App {
 
     /// Build the plain-text lines shown in the log detail pane for the
     /// currently selected entry. Returns an empty vec when nothing is selected.
-    pub fn build_detail_plain_lines(&self) -> Vec<String> {
+    fn build_detail_plain_lines(&self) -> Vec<String> {
         let Some(entry) = self.selected_log_entry() else {
             return Vec::new();
         };
 
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines = Vec::from(&[
+            format!("Level:     {}", entry.level.as_str()),
+            format!("Timestamp: {}", entry.timestamp.with_timezone(&Local)),
+        ]);
 
-        lines.push(format!("Level:     {}", entry.level.as_str()));
-        lines.push(format!(
-            "Timestamp: {}",
-            entry.timestamp.with_timezone(&Local)
-        ));
-
-        if !entry.thread.is_empty() {
-            lines.push(format!("Thread:    {}", entry.thread));
-        }
-
+        lines.extend((!entry.thread.is_empty()).then(|| format!("Thread:    {}", entry.thread)));
         lines.push(format!("Source:    {}", entry.source.raw()));
 
         if let Some(fp) = entry.source.file_path() {
@@ -169,27 +172,23 @@ impl App {
             lines.push(format!("Line:      {}", ln));
         }
 
-        lines.push(format!("Log File:  {}", entry.log_file_title));
+        lines.extend([
+            format!("Log File:  {}", entry.log_file_title),
+            String::new(),
+            "Message:".to_string(),
+            String::new(),
+        ]);
 
-        lines.push(String::new());
-        lines.push("Message:".to_string());
-        lines.push(String::new());
-
-        for msg_line in entry.message.lines() {
-            lines.push(msg_line.to_string());
-        }
+        lines.extend(entry.message.lines().map(ToOwned::to_owned));
 
         if entry.has_continuation() {
-            lines.push(String::new());
-            lines.push(format!(
-                "Stack Trace ({} frames):",
-                entry.continuation.len()
-            ));
-            lines.push(String::new());
+            lines.extend([
+                String::new(),
+                format!("Stack Trace ({} frames):", entry.continuation.len()),
+                String::new(),
+            ]);
 
-            for cont_line in &entry.continuation {
-                lines.push(cont_line.clone());
-            }
+            lines.extend(entry.continuation.iter().map(ToOwned::to_owned));
         }
 
         lines
@@ -285,7 +284,7 @@ impl App {
         let count = end - start + 1;
         let text = self.build_overview_plain_text(start, end);
 
-        if let Some(ref mut cb) = self.clipboard
+        if let Some(cb) = self.clipboard.as_mut()
             && cb.set_text(text).is_ok()
         {
             self.copied_at = Some(Instant::now());
@@ -316,67 +315,70 @@ impl App {
             .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string())
             .unwrap_or_else(|| format!("{}", report.created_at));
 
-        let mut lines: Vec<String> = Vec::new();
+        let mut lines = Vec::from(&[
+            // Report Information
+            "Report Information".to_string(),
+            String::new(),
+            format!("  UUID: {}", report.uuid),
+            format!("  Created: {}", created),
+            String::new(),
+            // System
+            "System".to_string(),
+            String::new(),
+            format!("  Client: {}", sys.client_name),
+            format!("  Build: {}", sys.client_build),
+            format!("  OS: {} {}", sys.os_name, sys.os_version),
+            format!("  Processor: {}", sys.client_processor),
+            format!("  Memory: {}", sys.memory),
+            format!("  Disk (total): {}", sys.total_space),
+            format!("  Disk (free): {}", sys.free_space),
+            format!("  Locale: {}", sys.locale),
+            format!("  Locked: {}", sys.client_is_locked),
+        ]);
 
-        // Report Information
-        lines.push("Report Information".to_string());
-        lines.push(String::new());
-        lines.push(format!("  UUID: {}", report.uuid));
-        lines.push(format!("  Created: {}", created));
-        lines.push(String::new());
-
-        // System
-        lines.push("System".to_string());
-        lines.push(String::new());
-        lines.push(format!("  Client: {}", sys.client_name));
-        lines.push(format!("  Build: {}", sys.client_build));
-        lines.push(format!("  OS: {} {}", sys.os_name, sys.os_version));
-        lines.push(format!("  Processor: {}", sys.client_processor));
-        lines.push(format!("  Memory: {}", sys.memory));
-        lines.push(format!("  Disk (total): {}", sys.total_space));
-        lines.push(format!("  Disk (free): {}", sys.free_space));
-        lines.push(format!("  Locale: {}", sys.locale));
-        lines.push(format!("  Locked: {}", sys.client_is_locked));
         if !sys.install_location.is_empty() {
             lines.push(format!("  Install Path: {}", sys.install_location));
         }
-        lines.push(String::new());
 
         // Overview counters
-        lines.push("Overview".to_string());
-        lines.push(String::new());
+        lines.extend([String::new(), "Overview".to_string(), String::new()]);
         if let Some(ref overview) = report.overview {
-            lines.push(format!("  Accounts: {}", overview.accounts));
-            lines.push(format!("  Vaults: {}", overview.vaults));
-            lines.push(format!("  Active Items: {}", overview.active_items));
-            lines.push(format!("  Inactive Items: {}", overview.inactive_items));
+            lines.extend([
+                format!("  Accounts: {}", overview.accounts),
+                format!("  Vaults: {}", overview.vaults),
+                format!("  Active Items: {}", overview.active_items),
+                format!("  Inactive Items: {}", overview.inactive_items),
+            ]);
         } else {
             lines.push("  (not available for this client)".to_string());
         }
-        lines.push(String::new());
 
         // Accounts
-        lines.push("Accounts".to_string());
-        lines.push(String::new());
+        lines.extend([String::new(), "Accounts".to_string(), String::new()]);
 
         for (i, account) in report.accounts.iter().enumerate() {
-            lines.push(format!("  Account {} - {}", i + 1, account.uuid));
-            lines.push(format!("    URL: {}", account.url));
-            lines.push(format!("    Type: {}", account.account_type));
-            let acct_state_str = account
-                .account_state
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "N/A".to_string());
-            lines.push(format!("    State: {}", acct_state_str));
-            let billing_str = account
-                .billing_status
-                .map(|b| b.to_string())
-                .unwrap_or_else(|| "N/A".to_string());
-            lines.push(format!("    Billing: {}", billing_str));
-            lines.push(format!("    Locked: {}", account.account_is_locked));
-            let storage_str = Self::format_bytes_static(account.storage_used);
-            lines.push(format!("    Storage Used: {}", storage_str));
-            lines.push(format!("    Vaults: {}", account.vaults.len()));
+            lines.extend([
+                format!("  Account {} - {}", i + 1, account.uuid),
+                format!("    URL: {}", account.url),
+                format!("    Type: {}", account.account_type),
+                format!(
+                    "    State: {}",
+                    account
+                        .account_state
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "N/A".to_string())
+                ),
+                format!(
+                    "    Billing: {}",
+                    account
+                        .billing_status
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| "N/A".to_string())
+                ),
+                format!("    Locked: {}", account.account_is_locked),
+                format!("    Storage Used: {}", format_bytes(account.storage_used)),
+                format!("    Vaults: {}", account.vaults.len()),
+            ]);
 
             if !account.vaults.is_empty() {
                 lines.push(format!(
@@ -384,38 +386,44 @@ impl App {
                     "Vault Type", "UUID", "Active", "Archived", "Deleted"
                 ));
             }
-            for vault in &account.vaults {
-                lines.push(format!(
+
+            lines.extend(account.vaults.iter().map(|vault| {
+                format!(
                     "      {:<14}  {:<36}  {:>8}  {:>10}  {:>9}",
                     vault.vault_type,
                     vault.uuid,
                     vault.items.active,
                     vault.items.archived,
                     vault.items.deleted,
-                ));
-            }
+                )
+            }));
+
             lines.push(String::new());
         }
 
         // Feature Flags
         if !sys.features.is_empty() {
-            lines.push("Feature Flags".to_string());
-            lines.push(String::new());
-            for feat in &sys.features {
-                lines.push(format!("  * {}", feat.name));
-            }
+            lines.extend(["Feature Flags".to_string(), String::new()]);
+            lines.extend(
+                sys.features
+                    .iter()
+                    .map(|feature| format!("  * {}", feature.name)),
+            );
+
             lines.push(String::new());
         }
 
         // Log Files
-        lines.push("Log Files".to_string());
-        lines.push(String::new());
-        lines.push(format!("  Files: {}", report.logs.len()));
-        lines.push(format!("  Total Lines: {}", self.total_log_lines));
-        lines.push(format!("  Parsed Entries: {}", self.all_entries.len()));
+        lines.extend([
+            "Log Files".to_string(),
+            String::new(),
+            format!("  Files: {}", report.logs.len()),
+            format!("  Total Lines: {}", self.total_log_lines),
+            format!("  Parsed Entries: {}", self.all_entries.len()),
+        ]);
 
         // Level breakdown
-        let mut by_level = [0usize; 5];
+        let mut level_counts = [0; 5];
         for entry in &self.all_entries {
             let idx = match entry.level {
                 LogLevel::Error => 0,
@@ -424,38 +432,23 @@ impl App {
                 LogLevel::Debug => 3,
                 LogLevel::Trace => 4,
             };
-            by_level[idx] += 1;
+            level_counts[idx] += 1;
         }
-        let level_labels = ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"];
-        for i in 0..5 {
-            if by_level[i] > 0 {
-                lines.push(format!("  {:<5} {}", level_labels[i], by_level[i]));
-            }
-        }
-        lines.push(String::new());
+        lines.extend(
+            ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
+                .iter()
+                .enumerate()
+                .map(|(index, level)| format!("  {:<5} {}", level, level_counts[index])),
+        );
 
-        // Crash Reports
-        lines.push("Crash Reports".to_string());
-        lines.push(String::new());
-        lines.push(format!("  Count: {}", report.crash_report_entries.len()));
+        lines.extend([
+            String::new(),
+            // Crash Reports
+            "Crash Reports".to_string(),
+            String::new(),
+            format!("  Count: {}", report.crash_report_entries.len()),
+        ]);
 
         lines
-    }
-
-    /// Format a byte count as a human-readable string (KB / MB / GB).
-    pub(super) fn format_bytes_static(bytes: u64) -> String {
-        const KB: u64 = 1024;
-        const MB: u64 = KB * 1024;
-        const GB: u64 = MB * 1024;
-
-        if bytes >= GB {
-            format!("{:.2} GB", bytes as f64 / GB as f64)
-        } else if bytes >= MB {
-            format!("{:.2} MB", bytes as f64 / MB as f64)
-        } else if bytes >= KB {
-            format!("{:.2} KB", bytes as f64 / KB as f64)
-        } else {
-            format!("{bytes} B")
-        }
     }
 }

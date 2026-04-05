@@ -53,7 +53,7 @@ impl StatefulWidget for LogsWidget<'_> {
         if state.show_detail {
             let horizontal = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
                 .split(vert[2]);
 
             render_log_list(
