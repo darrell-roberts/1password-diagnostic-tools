@@ -138,7 +138,14 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual log file entries.
-    for (i, log_file) in app.logs.log_file_filter.available.iter().enumerate() {
+    for (i, log_file) in app
+        .logs
+        .log_file_filter
+        .available
+        .iter()
+        .copied()
+        .enumerate()
+    {
         let picker_idx = i + 1;
         let is_highlighted = app.logs.log_file_picker_selected == picker_idx;
         let is_active = app.logs.log_file_filter.selected == Some(i);
@@ -151,7 +158,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
         let prefix = if is_active { "● " } else { "  " };
         items.push(ListItem::new(Line::from(vec![
             Span::styled(prefix, style),
-            Span::styled(log_file.as_ref(), style),
+            Span::styled(log_file, style),
         ])));
     }
 

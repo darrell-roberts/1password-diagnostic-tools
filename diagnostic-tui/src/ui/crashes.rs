@@ -152,7 +152,7 @@ fn render_crash_list(
                 .list_state
                 .selected()
                 .unwrap_or_default()
-                .clamp(0, crash_entries.len() - 1)
+                .clamp(0, crash_entries.len().saturating_sub(1))
                 + 1,
             crash_entries.len(),
         )
