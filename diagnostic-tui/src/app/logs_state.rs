@@ -41,7 +41,7 @@ pub struct LogsState<'a> {
     /// Source component filter.
     pub source_filter: SourceFilter<'a>,
     /// Log file filter.
-    pub log_file_filter: LogFileFilter,
+    pub log_file_filter: LogFileFilter<'a>,
     /// Indices into `all_entries` that pass current filters.
     pub filtered_indices: Vec<usize>,
 
@@ -66,7 +66,7 @@ pub struct LogsState<'a> {
 }
 
 impl<'a> LogsState<'a> {
-    pub fn new(all_entries: &[LogEntryRef<'a>]) -> Self {
+    pub fn new(all_entries: &'a [LogEntryRef<'a>]) -> Self {
         let source_filter = SourceFilter::new(all_entries);
         let log_file_filter = LogFileFilter::new(all_entries);
         let filtered_indices: Vec<usize> = (0..all_entries.len()).collect();

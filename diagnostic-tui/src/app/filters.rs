@@ -1,7 +1,5 @@
 //! Log entry filter types: level, source component, and log file.
 
-use std::sync::Arc;
-
 use diagnostic_parser::{LogEntryRef, log_entry::LogLevel};
 
 // ---------------------------------------------------------------------------
@@ -165,18 +163,18 @@ impl<'a> SourceFilter<'a> {
 
 /// Optional filter by log file name (e.g. "app.log", "network.log").
 #[derive(Debug, Clone)]
-pub struct LogFileFilter {
+pub struct LogFileFilter<'a> {
     /// Available distinct log file names extracted from log entries.
-    pub available: Vec<Arc<str>>,
+    pub available: Vec<&'a str>,
     /// Index into `available`, or `None` for "show all".
     pub selected: Option<usize>,
 }
 
-impl LogFileFilter {
-    pub fn new(entries: &[LogEntryRef<'_>]) -> Self {
+impl<'a> LogFileFilter<'a> {
+    pub fn new(entries: &'a [LogEntryRef<'a>]) -> Self {
         let mut log_files = entries
             .iter()
-            .map(|e| e.log_file_title.clone())
+            .map(|e| e.log_file_title.as_ref())
             .collect::<Vec<_>>();
         log_files.sort();
         log_files.dedup();
@@ -189,7 +187,7 @@ impl LogFileFilter {
     pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
         match self.selected {
             None => true,
-            Some(idx) => entry.log_file_title.as_ref() == self.available[idx].as_ref(),
+            Some(idx) => entry.log_file_title.as_ref() == self.available[idx],
         }
     }
 
@@ -207,7 +205,7 @@ impl LogFileFilter {
     pub fn label(&self) -> &str {
         match self.selected {
             None => "All Log Files",
-            Some(idx) => &self.available[idx],
+            Some(idx) => self.available[idx],
         }
     }
 }
