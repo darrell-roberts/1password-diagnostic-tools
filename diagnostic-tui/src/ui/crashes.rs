@@ -353,7 +353,7 @@ fn render_crash_detail(
                         } else {
                             Color::White
                         };
-                        Line::from(Span::styled(trimmed.to_string(), Style::default().fg(fg)))
+                        Line::from(Span::styled(trimmed, Style::default().fg(fg)))
                     }),
             );
         } else {
