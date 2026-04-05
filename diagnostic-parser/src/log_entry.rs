@@ -230,6 +230,14 @@ impl<'a> LogSourceRef<'a> {
             detail: self.detail.map(|d| d.to_owned()),
         }
     }
+
+    /// The raw source string reconstructed from its parts.
+    pub fn raw(&self) -> Cow<'_, str> {
+        match &self.detail {
+            Some(detail) => Cow::Owned(format!("{}:{}", self.component, detail)),
+            None => Cow::Borrowed(self.component),
+        }
+    }
 }
 
 impl fmt::Display for LogSourceRef<'_> {
@@ -425,7 +433,7 @@ impl<'a> LogEntryRef<'a> {
     /// strings via [`Arc<str>`].
     ///
     /// If you don't have an interner, use [`StringInterner::new()`] to create
-    /// one. Sharing a single interner across multiple log files maximises
+    /// one. Sharing a single interner across multiple log files maximizes
     /// deduplication.
     pub fn parse_log_content(
         log_file_title: &str,

@@ -6,7 +6,7 @@ use crate::{
     ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG, level_color, level_filter_color},
 };
 use chrono::Local;
-use diagnostic_parser::log_entry::LogEntry;
+use diagnostic_parser::LogEntryRef;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -24,7 +24,7 @@ use std::{
 
 /// Widget for the Logs tab, holding borrowed immutable data.
 pub struct LogsWidget<'a> {
-    pub all_entries: &'a [LogEntry],
+    pub all_entries: &'a [LogEntryRef<'a>],
     pub input_mode: InputMode,
     pub copied_at: Option<Instant>,
     pub copied_count: usize,
@@ -85,14 +85,14 @@ impl LogsWidget<'_> {
 
                 let msg_spans = if !query_lower.is_empty() {
                     highlight_matches(
-                        &entry.message,
+                        entry.message,
                         &query_lower,
                         Style::default().fg(Color::White),
                         highlight_style,
                     )
                 } else {
                     vec![Span::styled(
-                        &entry.message,
+                        entry.message,
                         Style::default().fg(Color::White),
                     )]
                 };
@@ -293,7 +293,7 @@ impl LogsWidget<'_> {
         if !entry_data.thread.is_empty() {
             lines.push(Line::from(vec![
                 Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
-                Span::raw(&entry_data.thread),
+                Span::raw(entry_data.thread.as_ref()),
             ]));
         }
 
@@ -319,7 +319,7 @@ impl LogsWidget<'_> {
         lines.extend([
             Line::from(vec![
                 Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
-                Span::raw(&entry_data.log_file_title),
+                Span::raw(entry_data.log_file_title.as_ref()),
             ]),
             Line::from(""),
             Line::from(Span::styled(
@@ -348,7 +348,7 @@ impl LogsWidget<'_> {
                 Line::from(""),
             ]);
 
-            lines.extend(entry_data.continuation.iter().map(|cont_line| {
+            lines.extend(entry_data.continuation.iter().copied().map(|cont_line| {
                 Line::from(Span::styled(
                     cont_line,
                     if cont_line
@@ -496,8 +496,8 @@ impl LogsWidget<'_> {
     }
 }
 
-impl StatefulWidget for LogsWidget<'_> {
-    type State = LogsState;
+impl<'a> StatefulWidget for LogsWidget<'a> {
+    type State = LogsState<'a>;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut LogsState) {
         // Clear search cursor each frame.

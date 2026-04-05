@@ -122,11 +122,11 @@ impl DiagnosticReport {
     /// large files, prefer [`parse_log_entries_ref`](Self::parse_log_entries_ref)
     /// which borrows from the log content already in memory.
     pub fn parse_log_entries(&self) -> Vec<LogEntry> {
-        let mut entries: Vec<LogEntry> = self
+        let mut entries = self
             .logs
             .iter()
             .flat_map(|log_file| LogEntry::parse_log_content(&log_file.title, &log_file.content))
-            .collect();
+            .collect::<Vec<_>>();
         entries.sort_by_key(|e| e.timestamp);
         entries
     }

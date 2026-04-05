@@ -5,10 +5,7 @@ use crate::{
     format_bytes,
     ui::helpers::{BORDER_FOCUSED, SELECT_BG, kv_line, kv_line_indent},
 };
-use diagnostic_parser::{
-    log_entry::{LogEntry, LogLevel},
-    model::DiagnosticReport,
-};
+use diagnostic_parser::{LogEntryRef, log_entry::LogLevel, model::DiagnosticReport};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Margin, Rect},
@@ -28,7 +25,7 @@ use std::{
 pub struct OverviewWidget<'a> {
     pub report: &'a DiagnosticReport,
     pub total_log_lines: usize,
-    pub all_entries: &'a [LogEntry],
+    pub all_entries: &'a [LogEntryRef<'a>],
     pub input_mode: InputMode,
     pub tab: Tab,
     pub copied_at: Option<Instant>,

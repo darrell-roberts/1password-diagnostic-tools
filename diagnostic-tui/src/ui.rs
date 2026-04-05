@@ -51,9 +51,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     match app.tab {
         Tab::Overview => {
             OverviewWidget {
-                report: &app.report,
+                report: app.report,
                 total_log_lines: app.total_log_lines,
-                all_entries: &app.all_entries,
+                all_entries: app.all_entries,
                 input_mode: app.input_mode,
                 tab: app.tab,
                 copied_at: app.copied_at,
@@ -63,7 +63,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         Tab::Logs => {
             LogsWidget {
-                all_entries: &app.all_entries,
+                all_entries: app.all_entries,
                 input_mode: app.input_mode,
                 copied_at: app.copied_at,
                 copied_count: app.copied_count,
@@ -77,8 +77,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         }
         Tab::CrashReports => {
             CrashReportsWidget {
-                report: &app.report,
-                all_entries: &app.all_entries,
+                report: app.report,
+                all_entries: app.all_entries,
                 tab: app.tab,
                 copied_at: app.copied_at,
                 copied_count: app.copied_count,

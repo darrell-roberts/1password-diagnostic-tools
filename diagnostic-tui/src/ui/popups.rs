@@ -59,7 +59,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual source entries.
-    for (i, source) in app.logs.source_filter.available.iter().enumerate() {
+    for (i, source) in app.logs.source_filter.available.iter().copied().enumerate() {
         let picker_idx = i + 1;
         let is_highlighted = app.logs.source_picker_selected == picker_idx;
         let is_active = app.logs.source_filter.selected == Some(i);
@@ -72,7 +72,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
         let prefix = if is_active { "● " } else { "  " };
         items.push(ListItem::new(Line::from(vec![
             Span::styled(prefix, style),
-            Span::styled(source.clone(), style),
+            Span::styled(source, style),
         ])));
     }
 
@@ -151,7 +151,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
         let prefix = if is_active { "● " } else { "  " };
         items.push(ListItem::new(Line::from(vec![
             Span::styled(prefix, style),
-            Span::styled(log_file.clone(), style),
+            Span::styled(log_file.as_ref(), style),
         ])));
     }
 
