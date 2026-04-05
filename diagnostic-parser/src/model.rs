@@ -443,14 +443,20 @@ pub enum AccountType {
     Other,
 }
 
+impl AccountType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AccountType::Individual => "Individual",
+            AccountType::Family => "Family",
+            AccountType::Business => "Business",
+            AccountType::Other => "Other",
+        }
+    }
+}
+
 impl fmt::Display for AccountType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Individual => write!(f, "Individual"),
-            Self::Family => write!(f, "Family"),
-            Self::Business => write!(f, "Business"),
-            Self::Other => write!(f, "Other"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -470,13 +476,19 @@ pub enum AccountState {
     Other,
 }
 
+impl AccountState {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AccountState::Active => "Active",
+            AccountState::Suspended => "Suspended",
+            AccountState::Other => "Other",
+        }
+    }
+}
+
 impl fmt::Display for AccountState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Active => write!(f, "Active"),
-            Self::Suspended => write!(f, "Suspended"),
-            Self::Other => write!(f, "Other"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -504,15 +516,21 @@ pub enum BillingStatus {
     Other,
 }
 
+impl BillingStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            BillingStatus::Trial => "Trial",
+            BillingStatus::Active => "Active",
+            BillingStatus::Grace => "Grace",
+            BillingStatus::Frozen => "Frozen",
+            BillingStatus::Other => "Other",
+        }
+    }
+}
+
 impl fmt::Display for BillingStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Trial => write!(f, "Trial"),
-            Self::Active => write!(f, "Active"),
-            Self::Grace => write!(f, "Grace"),
-            Self::Frozen => write!(f, "Frozen"),
-            Self::Other => write!(f, "Other"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
@@ -578,14 +596,20 @@ pub enum VaultType {
     Other,
 }
 
+impl VaultType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            VaultType::Personal => "Personal",
+            VaultType::UserCreated => "User Created",
+            VaultType::Everyone => "Everyone",
+            VaultType::Other => "Other",
+        }
+    }
+}
+
 impl fmt::Display for VaultType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Personal => write!(f, "Personal"),
-            Self::UserCreated => write!(f, "User Created"),
-            Self::Everyone => write!(f, "Everyone"),
-            Self::Other => write!(f, "Other"),
-        }
+        f.write_str(self.as_str())
     }
 }
 
