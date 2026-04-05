@@ -57,7 +57,9 @@ fn run_tui(report: DiagnosticReport) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(report);
+    let (log_entries, _) = report.parse_log_entries_ref();
+
+    let mut app = App::new(&report, &log_entries);
 
     loop {
         terminal.draw(|frame| ui::draw(frame, &mut app))?;

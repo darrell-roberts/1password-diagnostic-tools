@@ -19,7 +19,7 @@ pub(crate) fn ensure_cursor_visible(cursor: usize, scroll: &mut u16, viewport_h:
     }
 }
 
-impl App {
+impl App<'_> {
     // -----------------------------------------------------------------------
     // Directional navigation (up / down / page-up / page-down / home / end)
     // -----------------------------------------------------------------------

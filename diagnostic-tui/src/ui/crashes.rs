@@ -6,7 +6,7 @@ use crate::{
 };
 use chrono::Local;
 use diagnostic_parser::{
-    log_entry::LogEntry,
+    LogEntryRef,
     model::{CrashReportEntry, DiagnosticReport},
 };
 use ratatui::{
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// Widget for the Crash Reports tab, holding borrowed immutable data.
 pub struct CrashReportsWidget<'a> {
     pub report: &'a DiagnosticReport,
-    pub all_entries: &'a [LogEntry],
+    pub all_entries: &'a [LogEntryRef<'a>],
     pub tab: Tab,
     pub copied_at: Option<Instant>,
     pub copied_count: usize,
@@ -193,7 +193,7 @@ fn render_crash_list(
 fn render_crash_detail(
     state: &mut CrashReportsState,
     crash_entries: &[CrashReportEntry],
-    all_entries: &[LogEntry],
+    all_entries: &[LogEntryRef<'_>],
     copied_at: Option<Instant>,
     copied_count: usize,
     area: Rect,
@@ -297,11 +297,11 @@ fn render_crash_detail(
             Line::from(""),
             Line::from(vec![
                 Span::styled("Log File:  ", Style::default().fg(Color::DarkGray)),
-                Span::raw(entry.log_file_title.clone()),
+                Span::raw(entry.log_file_title.as_ref()),
             ]),
             Line::from(vec![
                 Span::styled("Thread:    ", Style::default().fg(Color::DarkGray)),
-                Span::raw(entry.thread.clone()),
+                Span::raw(entry.thread.as_ref()),
             ]),
             Line::from(vec![
                 Span::styled("Source:    ", Style::default().fg(Color::DarkGray)),
@@ -454,7 +454,7 @@ fn render_crash_detail(
 
 fn crash_report_plain_lines(
     crash: &CrashReportEntry,
-    panic_entry: Option<&LogEntry>,
+    panic_entry: Option<&LogEntryRef<'_>>,
 ) -> Vec<String> {
     let ts = crash
         .timestamp_utc()

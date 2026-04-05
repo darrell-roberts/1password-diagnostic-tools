@@ -1,6 +1,8 @@
 //! Log entry filter types: level, source component, and log file.
 
-use diagnostic_parser::log_entry::{LogEntry, LogLevel};
+use std::sync::Arc;
+
+use diagnostic_parser::{LogEntryRef, log_entry::LogLevel};
 
 // ---------------------------------------------------------------------------
 // Log level filter
@@ -110,17 +112,19 @@ impl LevelFilter {
 
 /// Optional filter by source component (e.g. "1P", "client", "status").
 #[derive(Debug, Clone)]
-pub struct SourceFilter {
+pub struct SourceFilter<'a> {
     /// Available distinct component names extracted from log entries.
-    pub available: Vec<String>,
+    pub available: Vec<&'a str>,
     /// Index into `available`, or `None` for "show all".
     pub selected: Option<usize>,
 }
 
-impl SourceFilter {
-    pub fn new(entries: &[LogEntry]) -> Self {
-        let mut components: Vec<String> =
-            entries.iter().map(|e| e.source.component.clone()).collect();
+impl<'a> SourceFilter<'a> {
+    pub fn new(entries: &[LogEntryRef<'a>]) -> Self {
+        let mut components = entries
+            .iter()
+            .map(|e| e.source.component)
+            .collect::<Vec<_>>();
         components.sort();
         components.dedup();
         Self {
@@ -129,7 +133,7 @@ impl SourceFilter {
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntry) -> bool {
+    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
         match self.selected {
             None => true,
             Some(idx) => entry.source.component == self.available[idx],
@@ -150,7 +154,7 @@ impl SourceFilter {
     pub fn label(&self) -> &str {
         match self.selected {
             None => "All Sources",
-            Some(idx) => &self.available[idx],
+            Some(idx) => self.available[idx],
         }
     }
 }
@@ -163,14 +167,17 @@ impl SourceFilter {
 #[derive(Debug, Clone)]
 pub struct LogFileFilter {
     /// Available distinct log file names extracted from log entries.
-    pub available: Vec<String>,
+    pub available: Vec<Arc<str>>,
     /// Index into `available`, or `None` for "show all".
     pub selected: Option<usize>,
 }
 
 impl LogFileFilter {
-    pub fn new(entries: &[LogEntry]) -> Self {
-        let mut log_files: Vec<String> = entries.iter().map(|e| e.log_file_title.clone()).collect();
+    pub fn new(entries: &[LogEntryRef<'_>]) -> Self {
+        let mut log_files = entries
+            .iter()
+            .map(|e| e.log_file_title.clone())
+            .collect::<Vec<_>>();
         log_files.sort();
         log_files.dedup();
         Self {
@@ -179,10 +186,10 @@ impl LogFileFilter {
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntry) -> bool {
+    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
         match self.selected {
             None => true,
-            Some(idx) => entry.log_file_title == self.available[idx],
+            Some(idx) => entry.log_file_title.as_ref() == self.available[idx].as_ref(),
         }
     }
 

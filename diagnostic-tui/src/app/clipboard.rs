@@ -10,16 +10,13 @@ use crate::{
     format_bytes,
 };
 use chrono::Local;
-use diagnostic_parser::{
-    log_entry::{LogEntry, LogLevel},
-    model::CrashReportEntry,
-};
+use diagnostic_parser::{LogEntryRef, log_entry::LogLevel, model::CrashReportEntry};
 use std::time::Instant;
 
 /// Build plain-text lines for a single crash report and its linked panic entry.
 fn crash_report_plain_lines(
     crash: &CrashReportEntry,
-    panic_entry: Option<&LogEntry>,
+    panic_entry: Option<&LogEntryRef<'_>>,
 ) -> Vec<String> {
     let ts = crash
         .timestamp_utc()
@@ -77,7 +74,7 @@ fn crash_report_plain_lines(
     lines
 }
 
-impl App {
+impl App<'_> {
     // -----------------------------------------------------------------------
     // Copy: log list
     // -----------------------------------------------------------------------
@@ -188,7 +185,7 @@ impl App {
                 String::new(),
             ]);
 
-            lines.extend(entry.continuation.iter().map(ToOwned::to_owned));
+            lines.extend(entry.continuation.iter().copied().map(ToOwned::to_owned));
         }
 
         lines
@@ -212,7 +209,7 @@ impl App {
         let text: String = (start..=end)
             .filter_map(|i| self.report.crash_report_entries.get(i))
             .map(|crash| {
-                let panic = crash.find_panic_entry(&self.all_entries);
+                let panic = crash.find_panic_entry(self.all_entries);
                 crash_report_plain_lines(crash, panic).join("\n")
             })
             .collect::<Vec<_>>()
@@ -424,7 +421,7 @@ impl App {
 
         // Level breakdown
         let mut level_counts = [0; 5];
-        for entry in &self.all_entries {
+        for entry in self.all_entries {
             let idx = match entry.level {
                 LogLevel::Error => 0,
                 LogLevel::Warn => 1,

@@ -24,7 +24,7 @@ pub(super) enum PaneSelectTarget {
     CrashDetail,
 }
 
-impl App {
+impl App<'_> {
     /// Handle keys when in search input mode.
     pub(super) fn handle_search_key(&mut self, key: KeyEvent) -> bool {
         match key.code {
@@ -37,14 +37,14 @@ impl App {
             }
             KeyCode::Backspace => {
                 self.logs.search_query.pop();
-                self.logs.find_nearest(&self.all_entries);
+                self.logs.find_nearest(self.all_entries);
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.logs.search_query.clear();
             }
             KeyCode::Char(c) => {
                 self.logs.search_query.push(c);
-                self.logs.find_nearest(&self.all_entries);
+                self.logs.find_nearest(self.all_entries);
             }
             _ => {}
         }
@@ -139,16 +139,16 @@ impl App {
 
             // Find next / previous match.
             KeyCode::Char('n') if self.tab == Tab::Logs && !self.logs.search_query.is_empty() => {
-                self.logs.find_next(&self.all_entries);
+                self.logs.find_next(self.all_entries);
             }
             KeyCode::Char('N') if self.tab == Tab::Logs && !self.logs.search_query.is_empty() => {
-                self.logs.find_prev(&self.all_entries);
+                self.logs.find_prev(self.all_entries);
             }
 
             // Level filter cycle.
             KeyCode::Char('f') if self.tab == Tab::Logs && !control_pressed => {
                 self.logs.level_filter.cycle();
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
 
             KeyCode::Char('f') if control_pressed => {
@@ -162,7 +162,7 @@ impl App {
             // Source filter cycle.
             KeyCode::Char('s') if self.tab == Tab::Logs => {
                 self.logs.source_filter.cycle_next();
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
 
             // Source picker popup.
@@ -178,13 +178,13 @@ impl App {
             // Reset source filter to All Sources.
             KeyCode::Char('a') if self.tab == Tab::Logs => {
                 self.logs.source_filter.selected = None;
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
 
             // Log file filter cycle.
             KeyCode::Char('l') if self.tab == Tab::Logs => {
                 self.logs.log_file_filter.cycle_next();
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
 
             // Log file picker popup.
@@ -199,7 +199,7 @@ impl App {
             // Reset log file filter to All Log Files (combine all logs).
             KeyCode::Char('A') if self.tab == Tab::Logs => {
                 self.logs.log_file_filter.selected = None;
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
 
             // Toggle detail view.
@@ -580,7 +580,7 @@ impl App {
                     self.logs.source_filter.selected = Some(self.logs.source_picker_selected - 1);
                 }
                 self.logs.show_source_picker = false;
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
             _ => {}
         }
@@ -632,7 +632,7 @@ impl App {
                         Some(self.logs.log_file_picker_selected - 1);
                 }
                 self.logs.show_log_file_picker = false;
-                self.logs.refilter(&self.all_entries);
+                self.logs.refilter(self.all_entries);
             }
             _ => {}
         }
