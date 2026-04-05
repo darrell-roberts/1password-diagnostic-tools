@@ -2,7 +2,8 @@
 
 use crate::{
     app::{InputMode, OverviewState, Tab},
-    ui::helpers::{BORDER_FOCUSED, SELECT_BG, format_bytes, kv_line, kv_line_indent},
+    format_bytes,
+    ui::helpers::{BORDER_FOCUSED, SELECT_BG, kv_line, kv_line_indent},
 };
 use diagnostic_parser::{
     log_entry::{LogEntry, LogLevel},
@@ -18,7 +19,10 @@ use ratatui::{
         StatefulWidget, Table, Widget,
     },
 };
-use std::time::{Duration, Instant};
+use std::{
+    borrow::Cow,
+    time::{Duration, Instant},
+};
 
 /// Widget for the Overview tab, holding borrowed immutable data.
 pub struct OverviewWidget<'a> {
@@ -111,11 +115,11 @@ impl<'a> OverviewWidget<'a> {
                                     + row_idx;
                                 let row = Row::new([
                                     Cell::from(Span::styled(
-                                        vault.vault_type.to_string(),
+                                        vault.vault_type.as_str(),
                                         Style::default().fg(Color::Magenta),
                                     )),
                                     Cell::from(Span::styled(
-                                        vault.uuid.clone(),
+                                        &vault.uuid,
                                         Style::default().fg(Color::DarkGray),
                                     )),
                                     Cell::from(vault.items.active.to_string()),
@@ -301,22 +305,24 @@ impl StatefulWidget for OverviewWidget<'_> {
                         .add_modifier(Modifier::BOLD),
                 )),
                 kv_line_indent(4, "URL", &account.url),
-                kv_line_indent(4, "Type", &account.account_type.to_string()),
+                kv_line_indent(4, "Type", account.account_type.as_str()),
                 kv_line_indent(
                     4,
                     "State",
-                    &account
+                    account
                         .account_state
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "N/A".to_string()),
+                        .as_ref()
+                        .map(|state| state.as_str())
+                        .unwrap_or_else(|| "N/A"),
                 ),
                 kv_line_indent(
                     4,
                     "Billing",
-                    &account
+                    account
                         .billing_status
-                        .map(|b| b.to_string())
-                        .unwrap_or_else(|| "N/A".to_string()),
+                        .as_ref()
+                        .map(|status| status.as_str())
+                        .unwrap_or_else(|| "N/A"),
                 ),
                 kv_line_indent(4, "Locked", &account.account_is_locked.to_string()),
                 kv_line_indent(4, "Storage Used", &format_bytes(account.storage_used)),
@@ -435,9 +441,9 @@ impl StatefulWidget for OverviewWidget<'_> {
             .copied_at
             .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
 
-        let title = if show_copied && self.tab == Tab::Overview {
+        let title: Cow<'_, str> = if show_copied && self.tab == Tab::Overview {
             let count = self.copied_count;
-            format!(" Overview — Copied {count} lines! ✓ ")
+            format!(" Overview — Copied {count} lines! ✓ ").into()
         } else if in_select {
             let (start, end) = overview_selection.unwrap_or((cursor, cursor));
             let count = end - start + 1;
@@ -447,10 +453,11 @@ impl StatefulWidget for OverviewWidget<'_> {
                 state.line_count,
                 count,
             )
+            .into()
         } else if state.line_count > 0 {
-            format!(" Overview [{}/{}] ", state.cursor + 1, state.line_count,)
+            format!(" Overview [{}/{}] ", state.cursor + 1, state.line_count,).into()
         } else {
-            " Overview ".to_string()
+            " Overview ".into()
         };
 
         let title_style = if show_copied && self.tab == Tab::Overview {

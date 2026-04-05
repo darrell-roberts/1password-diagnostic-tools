@@ -17,7 +17,10 @@ use ratatui::{
         StatefulWidget, Table, Widget as _, Wrap,
     },
 };
-use std::time::{Duration, Instant};
+use std::{
+    borrow::Cow,
+    time::{Duration, Instant},
+};
 
 /// Widget for the Logs tab, holding borrowed immutable data.
 pub struct LogsWidget<'a> {
@@ -50,7 +53,7 @@ impl StatefulWidget for LogsWidget<'_> {
         if state.show_detail {
             let horizontal = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(45), Constraint::Percentage(55)])
+                .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
                 .split(vert[2]);
 
             render_log_list(
@@ -92,11 +95,12 @@ fn render_search_bar(state: &mut LogsState, input_mode: InputMode, area: Rect, b
         InputMode::Normal | InputMode::Select => (BORDER_NORMAL, false),
     };
 
-    let search_text = if state.search_query.is_empty() && input_mode == InputMode::Normal {
-        "Press / to search...".to_string()
-    } else {
-        state.search_query.clone()
-    };
+    let search_text: Cow<'_, str> =
+        if state.search_query.is_empty() && input_mode == InputMode::Normal {
+            "Press / to search...".into()
+        } else {
+            state.search_query.as_str().into()
+        };
 
     let style = if state.search_query.is_empty() && input_mode == InputMode::Normal {
         Style::default().fg(Color::DarkGray)
@@ -110,7 +114,7 @@ fn render_search_bar(state: &mut LogsState, input_mode: InputMode, area: Rect, b
         " Search "
     };
 
-    Paragraph::new(search_text.as_str())
+    Paragraph::new(search_text)
         .style(style)
         .block(
             Block::default()
@@ -415,15 +419,15 @@ fn render_log_detail(
     let show_copied = copied_at.is_some_and(|t| t.elapsed() < Duration::from_secs(2));
     let detail_sel = state.detail_selection_range();
 
-    let title = if show_copied && state.detail_focused {
-        format!(" Detail — Copied {copied_count} lines! ✓ ")
+    let title: Cow<'_, str> = if show_copied && state.detail_focused {
+        format!(" Detail — Copied {copied_count} lines! ✓ ").into()
     } else if let Some((start, end)) = detail_sel {
         let count = end - start + 1;
-        format!(" Detail — {} selected (y:copy  Esc:cancel) ", count)
+        format!(" Detail — {} selected (y:copy  Esc:cancel) ", count).into()
     } else if state.detail_focused {
-        " Detail (focused) ".to_string()
+        " Detail (focused) ".into()
     } else {
-        " Detail ".to_string()
+        " Detail ".into()
     };
 
     let title_style = if show_copied && state.detail_focused {
@@ -466,7 +470,7 @@ fn render_log_detail(
     lines.push(Line::from(vec![
         Span::styled("Level:     ", Style::default().fg(Color::DarkGray)),
         Span::styled(
-            level.as_str().to_string(),
+            level.as_str(),
             Style::default()
                 .fg(level_color(level))
                 .add_modifier(Modifier::BOLD),
@@ -519,7 +523,7 @@ fn render_log_detail(
     lines.push(Line::from(""));
 
     for msg_line in message.lines() {
-        lines.push(Line::from(Span::raw(msg_line.to_string())));
+        lines.push(Line::from(Span::raw(msg_line)));
     }
 
     if has_continuation {
@@ -600,12 +604,12 @@ fn render_log_detail(
 // Search highlighting
 // ---------------------------------------------------------------------------
 
-fn highlight_matches(
-    text: &str,
+fn highlight_matches<'a>(
+    text: &'a str,
     query_lower: &str,
     base_style: Style,
     match_style: Style,
-) -> Vec<Span<'static>> {
+) -> Vec<Span<'a>> {
     let text_lower = text.to_lowercase();
     let mut spans = Vec::new();
     let mut start = 0;
@@ -615,22 +619,16 @@ fn highlight_matches(
         let match_end = match_start + query_lower.len();
 
         if match_start > start {
-            spans.push(Span::styled(
-                text[start..match_start].to_string(),
-                base_style,
-            ));
+            spans.push(Span::styled(&text[start..match_start], base_style));
         }
-        spans.push(Span::styled(
-            text[match_start..match_end].to_string(),
-            match_style,
-        ));
+        spans.push(Span::styled(&text[match_start..match_end], match_style));
         start = match_end;
     }
 
     if start < text.len() {
-        spans.push(Span::styled(text[start..].to_string(), base_style));
+        spans.push(Span::styled(&text[start..], base_style));
     } else if spans.is_empty() {
-        spans.push(Span::styled(text.to_string(), base_style));
+        spans.push(Span::styled(text, base_style));
     }
 
     spans

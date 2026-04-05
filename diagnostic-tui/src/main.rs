@@ -5,8 +5,6 @@
 //! ```sh
 //! cargo run -- path/to/file.1pdiagnostics
 //! ```
-mod app;
-mod ui;
 use app::App;
 use crossterm::{
     event::{
@@ -18,8 +16,10 @@ use crossterm::{
 use diagnostic_parser::DiagnosticReport;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use std::io;
-use std::process;
+use std::{io, process};
+
+mod app;
+mod ui;
 
 fn main() {
     let Some(path) = std::env::args().nth(1) else {
@@ -92,4 +92,25 @@ fn run_tui(report: DiagnosticReport) -> io::Result<()> {
     terminal.show_cursor()?;
 
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// String / byte formatting
+// ---------------------------------------------------------------------------
+
+/// Format a byte count as a human-readable string (KB / MB / GB).
+pub fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
+    }
 }

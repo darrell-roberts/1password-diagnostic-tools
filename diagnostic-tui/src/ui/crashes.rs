@@ -353,7 +353,7 @@ fn render_crash_detail(
                         } else {
                             Color::White
                         };
-                        Line::from(Span::styled(trimmed.to_string(), Style::default().fg(fg)))
+                        Line::from(Span::styled(trimmed, Style::default().fg(fg)))
                     }),
             );
         } else {
@@ -417,30 +417,19 @@ fn render_crash_detail(
 
     if state.detail_focused {
         let selection_range = state.detail_selection_range();
+        // Update line styles.
         for (i, line) in lines.iter_mut().enumerate() {
             let is_cursor = i == state.detail_cursor;
             let is_in_selection =
                 selection_range.is_some_and(|(start, end)| i >= start && i <= end);
 
             if is_cursor {
-                *line = Line::from(
-                    line.spans
-                        .iter()
-                        .map(|span| {
-                            Span::styled(
-                                span.content.clone(),
-                                span.style.reversed().add_modifier(Modifier::BOLD),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                );
+                let mut new_line = std::mem::take(line)
+                    .style(Style::new().reversed().add_modifier(Modifier::BOLD));
+                std::mem::swap(line, &mut new_line);
             } else if is_in_selection {
-                *line = Line::from(
-                    line.spans
-                        .iter()
-                        .map(|span| Span::styled(span.content.clone(), span.style.bg(SELECT_BG)))
-                        .collect::<Vec<_>>(),
-                );
+                let mut new_line = std::mem::take(line).style(Style::default().bg(SELECT_BG));
+                std::mem::swap(line, &mut new_line);
             }
         }
     }

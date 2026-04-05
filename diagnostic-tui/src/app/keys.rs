@@ -4,9 +4,11 @@
 //! on construction and high-level dispatch. Each method returns `true` when
 //! the application should quit.
 
-use super::App;
-use crate::app::navigation::ensure_cursor_visible;
-use crate::app::state::{ContainerStateExt as _, InputMode, Tab};
+use crate::app::{
+    App,
+    navigation::ensure_cursor_visible,
+    state::{ContainerStateExt as _, InputMode, Tab},
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 /// Which table-backed list is active in visual-select mode.
@@ -427,7 +429,7 @@ impl App {
         key: KeyEvent,
         target: PaneSelectTarget,
     ) -> bool {
-        let (cursor, scroll, line_count, viewport_h) = match target {
+        let (cursor, scroll, line_count, viewport_horizontal) = match target {
             PaneSelectTarget::Overview => (
                 &mut self.overview.cursor,
                 &mut self.overview.scroll,
@@ -450,53 +452,53 @@ impl App {
 
         if self.pending_z {
             self.pending_z = false;
-            let half = (viewport_h as usize) / 2;
+            let half = (viewport_horizontal as usize) / 2;
             match key.code {
                 KeyCode::Char('z') => *scroll = cursor.saturating_sub(half) as u16,
                 KeyCode::Char('t') => *scroll = *cursor as u16,
                 KeyCode::Char('b') => {
-                    *scroll = (*cursor + 1).saturating_sub(viewport_h as usize) as u16
+                    *scroll = (*cursor + 1).saturating_sub(viewport_horizontal as usize) as u16
                 }
                 _ => {}
             }
             return false;
         }
 
-        let page = viewport_h as usize;
+        let page = viewport_horizontal as usize;
         match key.code {
             KeyCode::Esc => {}
             KeyCode::Char('y') => {}
             KeyCode::Up | KeyCode::Char('k') => {
                 if *cursor > 0 {
                     *cursor -= 1;
-                    ensure_cursor_visible(*cursor, scroll, viewport_h);
+                    ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
                 }
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 if line_count > 0 && *cursor + 1 < line_count {
                     *cursor += 1;
-                    ensure_cursor_visible(*cursor, scroll, viewport_h);
+                    ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
                 }
             }
             KeyCode::PageUp => {
                 *cursor = cursor.saturating_sub(page);
-                ensure_cursor_visible(*cursor, scroll, viewport_h);
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
             KeyCode::PageDown => {
                 if line_count > 0 {
                     *cursor = (*cursor + page).min(line_count - 1);
                 }
-                ensure_cursor_visible(*cursor, scroll, viewport_h);
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
             KeyCode::Home | KeyCode::Char('g') => {
                 *cursor = 0;
-                ensure_cursor_visible(*cursor, scroll, viewport_h);
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
             KeyCode::End | KeyCode::Char('G') => {
                 if line_count > 0 {
                     *cursor = line_count - 1;
                 }
-                ensure_cursor_visible(*cursor, scroll, viewport_h);
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
             KeyCode::Char('z') => {
                 self.pending_z = true;
