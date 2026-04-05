@@ -15,7 +15,6 @@ mod overview;
 mod popups;
 
 use crate::app::{App, InputMode, Tab};
-
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -123,15 +122,13 @@ fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         })
         .collect::<Vec<_>>();
 
-    let selected = Tab::ALL.iter().position(|t| *t == app.tab).unwrap_or(0);
-
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .title(" Diagnostic Report "),
         )
-        .select(selected)
+        .select(Tab::ALL.iter().position(|t| *t == app.tab).unwrap_or(0))
         .highlight_style(Style::default().fg(TAB_ACTIVE).add_modifier(Modifier::BOLD))
         .divider(Span::raw("│"));
 
@@ -181,6 +178,5 @@ fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .saturating_sub(help_hint.len());
     let fill = Span::raw(" ".repeat(fill_len));
 
-    let bar = Paragraph::new(Line::from(vec![left, fill, right]));
-    frame.render_widget(bar, area);
+    frame.render_widget(Paragraph::new(Line::from(vec![left, fill, right])), area);
 }

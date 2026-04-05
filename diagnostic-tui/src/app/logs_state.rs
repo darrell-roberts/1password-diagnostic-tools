@@ -173,24 +173,6 @@ impl LogsState {
         self.detail_scroll = 0;
     }
 
-    // -----------------------------------------------------------------------
-    // Search navigation
-    // -----------------------------------------------------------------------
-
-    /// Returns `true` if the entry at `all_entries[idx]` matches the current
-    /// search query (case-insensitive substring in message or continuation).
-    fn entry_matches_query(all_entries: &[LogEntry], idx: usize, query_lower: &str) -> bool {
-        if query_lower.is_empty() {
-            return false;
-        }
-        let entry = &all_entries[idx];
-        entry.message.to_lowercase().contains(query_lower)
-            || entry
-                .continuation
-                .iter()
-                .any(|c| c.to_lowercase().contains(query_lower))
-    }
-
     /// Move the cursor forward to the next entry matching the search query.
     pub fn find_next(&mut self, all_entries: &[LogEntry]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
@@ -203,7 +185,7 @@ impl LogsState {
         let len = self.filtered_indices.len();
         for offset in 1..=len {
             let pos = (selected + offset) % len;
-            if Self::entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
+            if entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
                 self.list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
@@ -223,7 +205,7 @@ impl LogsState {
         let len = self.filtered_indices.len();
         for offset in 1..=len {
             let pos = (selected + len - offset) % len;
-            if Self::entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
+            if entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
                 self.list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
@@ -244,11 +226,29 @@ impl LogsState {
         };
         for offset in 0..len {
             let pos = (selected + offset) % len;
-            if Self::entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
+            if entry_matches_query(all_entries, self.filtered_indices[pos], &query_lower) {
                 self.list_state.select(Some(pos));
                 self.detail_scroll = 0;
                 return;
             }
         }
     }
+}
+
+// -----------------------------------------------------------------------
+// Search navigation
+// -----------------------------------------------------------------------
+
+/// Returns `true` if the entry at `all_entries[idx]` matches the current
+/// search query (case-insensitive substring in message or continuation).
+fn entry_matches_query(all_entries: &[LogEntry], idx: usize, query_lower: &str) -> bool {
+    if query_lower.is_empty() {
+        return false;
+    }
+    let entry = &all_entries[idx];
+    entry.message.to_lowercase().contains(query_lower)
+        || entry
+            .continuation
+            .iter()
+            .any(|c| c.to_lowercase().contains(query_lower))
 }

@@ -29,6 +29,7 @@ impl Default for LevelFilter {
 }
 
 impl LevelFilter {
+    #[inline]
     pub fn accepts(&self, level: LogLevel) -> bool {
         match level {
             LogLevel::Trace => self.show_trace,
@@ -40,6 +41,7 @@ impl LevelFilter {
     }
 
     /// Cycle through preset filter levels.
+    #[inline]
     pub fn cycle(&mut self) {
         // All -> Error only -> Warn+ -> Info+ -> Debug+ -> All
         if self.show_trace {
@@ -84,6 +86,7 @@ impl LevelFilter {
         }
     }
 
+    #[inline]
     pub fn label(&self) -> &'static str {
         if self.show_trace {
             "ALL"
