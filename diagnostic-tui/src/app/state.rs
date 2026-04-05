@@ -17,6 +17,7 @@ pub enum Tab {
 impl Tab {
     pub const ALL: [Tab; 3] = [Tab::Overview, Tab::Logs, Tab::CrashReports];
 
+    #[inline]
     pub fn title(self) -> &'static str {
         match self {
             Tab::Overview => "Overview",
@@ -25,6 +26,7 @@ impl Tab {
         }
     }
 
+    #[inline]
     pub fn next(self) -> Self {
         match self {
             Tab::Overview => Tab::Logs,
@@ -33,6 +35,7 @@ impl Tab {
         }
     }
 
+    #[inline]
     pub fn prev(self) -> Self {
         match self {
             Tab::Overview => Tab::CrashReports,

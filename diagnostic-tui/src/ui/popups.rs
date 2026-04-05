@@ -1,15 +1,16 @@
 //! Rendering logic for popup overlays: source picker, log file picker, and
 //! help screen.
 
-use crate::app::App;
-use crate::ui::helpers::{centered_rect, help_entry};
-
-use ratatui::Frame;
-use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{
-    Block, Borders, Clear, List, ListItem, ListState as RatatuiListState, Paragraph,
+use crate::{
+    app::App,
+    ui::helpers::{centered_rect, help_entry},
+};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState as RatatuiListState, Paragraph},
 };
 
 // ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Clear, popup_area);
 
     // Build list items.
-    let mut items: Vec<ListItem> = Vec::with_capacity(item_count);
+    let mut items = Vec::with_capacity(item_count);
 
     // "All Sources" entry.
     let all_style = if app.logs.source_picker_selected == 0 {
@@ -95,7 +96,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
 // Log file picker
 // ---------------------------------------------------------------------------
 
-/// Draw the log file picker popup centred on the screen.
+/// Draw the log file picker popup centered on the screen.
 pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute popup dimensions based on content.
     let max_name_len = app
@@ -118,7 +119,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_widget(Clear, popup_area);
 
     // Build list items.
-    let mut items: Vec<ListItem> = Vec::with_capacity(item_count);
+    let mut items = Vec::with_capacity(item_count);
 
     // "All Log Files" entry.
     let all_style = if app.logs.log_file_picker_selected == 0 {
