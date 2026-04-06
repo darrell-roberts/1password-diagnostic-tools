@@ -204,7 +204,10 @@ pub fn draw_help_overlay(frame: &mut Frame, area: Rect) {
             Style::default().add_modifier(Modifier::BOLD),
         )),
         help_entry("Tab / Shift+Tab", "Switch between tabs"),
-        help_entry("1 / 2 / 3", "Jump to Overview / Logs / Crashes"),
+        help_entry(
+            "1 / 2 / 3 / 4",
+            "Jump to Overview / Logs / Crashes / Analysis",
+        ),
         help_entry("Up/k  Down/j", "Move selection up / down"),
         help_entry("PgUp / PgDn", "Page up / down"),
         help_entry("Home/g  End/G", "Jump to first / last item"),

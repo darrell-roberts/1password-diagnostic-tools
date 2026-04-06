@@ -12,10 +12,11 @@ pub enum Tab {
     Overview,
     Logs,
     CrashReports,
+    Analysis,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 3] = [Tab::Overview, Tab::Logs, Tab::CrashReports];
+    pub const ALL: [Tab; 4] = [Tab::Overview, Tab::Logs, Tab::CrashReports, Tab::Analysis];
 
     #[inline]
     pub fn title(self) -> &'static str {
@@ -23,6 +24,7 @@ impl Tab {
             Tab::Overview => "Overview",
             Tab::Logs => "Logs",
             Tab::CrashReports => "Crash Reports",
+            Tab::Analysis => "Analysis",
         }
     }
 
@@ -31,16 +33,18 @@ impl Tab {
         match self {
             Tab::Overview => Tab::Logs,
             Tab::Logs => Tab::CrashReports,
-            Tab::CrashReports => Tab::Overview,
+            Tab::CrashReports => Tab::Analysis,
+            Tab::Analysis => Tab::Overview,
         }
     }
 
     #[inline]
     pub fn prev(self) -> Self {
         match self {
-            Tab::Overview => Tab::CrashReports,
+            Tab::Overview => Tab::Analysis,
             Tab::Logs => Tab::Overview,
             Tab::CrashReports => Tab::Logs,
+            Tab::Analysis => Tab::CrashReports,
         }
     }
 }

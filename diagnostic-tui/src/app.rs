@@ -3,7 +3,7 @@
 //! The `app` module is split into several sub-modules for maintainability:
 //!
 //! - [`state`] — core state types (`Tab`, `InputMode`)
-//! - [`overview_state`] — state for the Overview tab
+//! - [`pane_state`] — shared scrollable-pane state (Overview, Analysis)
 //! - [`logs_state`] — state for the Logs tab
 //! - [`crash_state`] — state for the Crash Reports tab
 //! - [`filters`] — log entry filter types (`LevelFilter`, `SourceFilter`, `LogFileFilter`)
@@ -11,20 +11,22 @@
 //! - [`navigation`] — directional movement, paging, and viewport scrolling
 //! - [`clipboard`] — copy/paste, selection ranges, and plain-text builders
 
+pub mod analysis_state;
 pub mod clipboard;
 pub mod crash_state;
 pub mod filters;
 pub mod keys;
 pub mod logs_state;
 pub mod navigation;
-pub mod overview_state;
+pub mod pane_state;
 pub mod state;
 
 // Re-export the most commonly used types so callers can write `app::App`, etc.
+pub use analysis_state::{AnalysisData, AnalysisState};
 pub use crash_state::CrashReportsState;
 use diagnostic_parser::LogEntryRef;
 pub use logs_state::LogsState;
-pub use overview_state::OverviewState;
+pub use pane_state::OverviewState;
 pub use state::{InputMode, Tab};
 
 use arboard::Clipboard;
@@ -68,6 +70,10 @@ pub struct App<'a> {
     pub logs: LogsState<'a>,
     /// Crash Reports tab state.
     pub crashes: CrashReportsState,
+    /// Analysis tab state.
+    pub analysis: AnalysisState,
+    /// Pre-computed analysis data.
+    pub analysis_data: AnalysisData,
 }
 
 impl<'a> App<'a> {
@@ -77,6 +83,7 @@ impl<'a> App<'a> {
 
         let logs = LogsState::new(all_entries);
         let crashes = CrashReportsState::new(has_crashes);
+        let analysis_data = AnalysisData::compute(all_entries, &report.crash_report_entries);
 
         Self {
             report,
@@ -92,6 +99,8 @@ impl<'a> App<'a> {
             overview: OverviewState::default(),
             logs,
             crashes,
+            analysis: AnalysisState::default(),
+            analysis_data,
         }
     }
 
@@ -146,6 +155,9 @@ impl<'a> App<'a> {
             InputMode::Normal => self.handle_normal_key(key),
             InputMode::Select if self.tab == Tab::Overview => {
                 self.handle_pane_select_key(key, PaneSelectTarget::Overview)
+            }
+            InputMode::Select if self.tab == Tab::Analysis => {
+                self.handle_pane_select_key(key, PaneSelectTarget::Analysis)
             }
             InputMode::Select if self.tab == Tab::CrashReports && self.crashes.detail_selecting => {
                 self.handle_pane_select_key(key, PaneSelectTarget::CrashDetail)
