@@ -17,15 +17,15 @@ pub type AnalysisState = ScrollablePaneState;
 // ---------------------------------------------------------------------------
 
 /// Pre-computed analytics over log entries and crash reports.
-pub struct AnalysisData {
+pub struct AnalysisData<'a> {
     /// Entry count per level, indexed as: [Error, Warn, Info, Debug, Trace].
     pub level_counts: [usize; 5],
     /// Total parsed entries.
     pub total_entries: usize,
     /// Top error messages, deduplicated and sorted by count descending.
-    pub top_errors: Vec<ErrorGroup>,
+    pub top_errors: Vec<ErrorGroup<'a>>,
     /// Per-component health statistics, sorted by error count descending.
-    pub component_health: Vec<ComponentStats>,
+    pub component_health: Vec<ComponentStats<'a>>,
     /// Timeline buckets for error/warn frequency.
     pub timeline_buckets: Vec<TimeBucket>,
     /// Human-readable label for the bucket width (e.g. "5 min", "1 hour").
@@ -35,24 +35,24 @@ pub struct AnalysisData {
     /// Detected gaps (periods with no log entries).
     pub gaps: Vec<GapInfo>,
     /// Summary of all panic log entries.
-    pub panics: Vec<PanicSummary>,
+    pub panics: Vec<PanicSummary<'a>>,
     /// Crash-to-panic correlations.
-    pub crash_correlations: Vec<CrashCorrelation>,
+    pub crash_correlations: Vec<CrashCorrelation<'a>>,
 }
 
 /// A group of deduplicated error messages.
-pub struct ErrorGroup {
+pub struct ErrorGroup<'a> {
     /// The normalized/representative message (truncated).
-    pub message: String,
+    pub message: &'a str,
     /// How many entries matched this group.
     pub count: usize,
     /// Components that produced this error.
-    pub components: Vec<String>,
+    pub components: Vec<&'a str>,
 }
 
 /// Per-component statistics.
-pub struct ComponentStats {
-    pub component: String,
+pub struct ComponentStats<'a> {
+    pub component: &'a str,
     pub error_count: usize,
     pub warn_count: usize,
     pub total_count: usize,
@@ -80,36 +80,36 @@ pub struct GapInfo {
 }
 
 /// Summary of a single panic entry.
-pub struct PanicSummary {
+pub struct PanicSummary<'a> {
     pub timestamp: DateTime<FixedOffset>,
-    pub message: String,
-    pub log_file: String,
+    pub message: &'a str,
+    pub log_file: &'a str,
     pub has_stack_trace: bool,
-    pub thread: String,
+    pub thread: &'a str,
 }
 
 /// Crash report correlated to a panic log entry.
-pub struct CrashCorrelation {
-    pub report_id: String,
-    pub report_type: String,
+pub struct CrashCorrelation<'a> {
+    pub report_id: &'a str,
+    pub report_type: &'a str,
     pub crash_timestamp: Option<String>,
-    pub matched_panic_message: Option<String>,
+    pub matched_panic_message: Option<&'a str>,
 }
 
 // ---------------------------------------------------------------------------
 // Computation
 // ---------------------------------------------------------------------------
 
-impl AnalysisData {
+impl<'a> AnalysisData<'a> {
     /// Compute all analytics from parsed log entries and crash reports.
-    pub fn compute(entries: &[LogEntryRef<'_>], crashes: &[CrashReportEntry]) -> Self {
+    pub fn compute(entries: &'a [LogEntryRef<'a>], crashes: &'a [CrashReportEntry]) -> Self {
         let total_entries = entries.len();
 
         // -- Level counts & component stats (single pass) --
         let mut level_counts = [0usize; 5];
         let mut component_map: HashMap<&str, (usize, usize, usize)> = HashMap::new();
         // (count, components, first full message)
-        let mut error_map: HashMap<String, (usize, Vec<String>, String)> = HashMap::new();
+        let mut error_map: HashMap<&str, (usize, Vec<&str>, &str)> = HashMap::new();
 
         for entry in entries {
             let idx = match entry.level {
@@ -132,27 +132,26 @@ impl AnalysisData {
 
             // Collect errors for deduplication.
             if entry.level == LogLevel::Error {
-                let key = normalize_error_message(entry.message);
+                let key = entry.message;
                 let group = error_map
                     .entry(key)
-                    .or_insert_with(|| (0, Vec::new(), entry.message.to_string()));
+                    .or_insert_with(|| (0, Vec::new(), entry.message));
                 group.0 += 1;
-                let comp_str = comp.to_string();
-                if !group.1.contains(&comp_str) {
-                    group.1.push(comp_str);
+                if !group.1.contains(&comp) {
+                    group.1.push(comp);
                 }
             }
         }
 
         // -- Top errors --
-        let mut top_errors: Vec<ErrorGroup> = error_map
+        let mut top_errors = error_map
             .into_iter()
             .map(|(_, (count, components, message))| ErrorGroup {
                 message,
                 count,
                 components,
             })
-            .collect();
+            .collect::<Vec<_>>();
         top_errors.sort_by(|a, b| b.count.cmp(&a.count));
         top_errors.truncate(20);
 
@@ -160,7 +159,7 @@ impl AnalysisData {
         let mut component_health = component_map
             .into_iter()
             .map(|(component, (e, w, t))| ComponentStats {
-                component: component.to_string(),
+                component,
                 error_count: e,
                 warn_count: w,
                 total_count: t,
@@ -181,10 +180,10 @@ impl AnalysisData {
             .filter(|e| e.is_panic())
             .map(|e| PanicSummary {
                 timestamp: e.timestamp,
-                message: truncate_str(e.message, 100).to_string(),
-                log_file: e.log_file_title.to_string(),
+                message: e.message,
+                log_file: e.log_file_title.as_ref(),
                 has_stack_trace: e.has_continuation(),
-                thread: e.thread.to_string(),
+                thread: e.thread.as_ref(),
             })
             .collect::<Vec<_>>();
 
@@ -194,13 +193,12 @@ impl AnalysisData {
             .map(|crash| {
                 let panic_entry = crash.find_panic_entry(entries);
                 CrashCorrelation {
-                    report_id: crash.report_id.clone(),
-                    report_type: crash.report_type.clone(),
+                    report_id: &crash.report_id,
+                    report_type: &crash.report_type,
                     crash_timestamp: crash
                         .timestamp_utc()
                         .map(|d| d.format("%Y-%m-%d %H:%M:%S UTC").to_string()),
-                    matched_panic_message: panic_entry
-                        .map(|e| truncate_str(e.message, 80).to_string()),
+                    matched_panic_message: panic_entry.map(|e| e.message),
                 }
             })
             .collect::<Vec<_>>();
@@ -243,7 +241,7 @@ fn compute_timeline(
 
     // Pick bucket width.
     let (bucket_secs, label) = if span < TimeDelta::hours(2) {
-        (300i64, "5 min")
+        (300, "5 min")
     } else if span < TimeDelta::hours(24) {
         (3600, "1 hour")
     } else {
@@ -388,12 +386,13 @@ fn detect_gaps(
 
 /// Normalize an error message for deduplication grouping.
 /// Takes first 80 chars and replaces long hex sequences and numeric runs.
+#[expect(dead_code, reason = "May use this again as an option")]
 fn normalize_error_message(msg: &str) -> String {
     let truncated = truncate_str(msg, 80);
     let mut result = String::with_capacity(truncated.len());
     let mut run_buf = String::new();
-    let mut hex_run = 0usize;
-    let mut digit_run = 0usize;
+    let mut hex_run = 0;
+    let mut digit_run = 0;
 
     for ch in truncated.chars() {
         if ch.is_ascii_hexdigit() {
@@ -439,7 +438,7 @@ fn truncate_str(s: &str, max_chars: usize) -> &str {
 // Plain-text builder (for clipboard)
 // ---------------------------------------------------------------------------
 
-impl AnalysisData {
+impl AnalysisData<'_> {
     /// Build plain-text lines that mirror the rendered analysis view
     /// line-for-line. Used for clipboard copy operations.
     ///

@@ -73,7 +73,7 @@ pub struct App<'a> {
     /// Analysis tab state.
     pub analysis: AnalysisState,
     /// Pre-computed analysis data.
-    pub analysis_data: AnalysisData,
+    pub analysis_data: AnalysisData<'a>,
 }
 
 impl<'a> App<'a> {

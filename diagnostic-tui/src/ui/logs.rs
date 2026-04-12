@@ -491,6 +491,10 @@ impl LogsWidget<'_> {
                 ),
                 Style::default().fg(Color::DarkGray),
             ),
+            Span::styled(
+                format!(" {} Search matches", state.search_hits),
+                Style::default().fg(Color::DarkGray),
+            ),
         ])))
         .render(area, buf);
     }
