@@ -11,3 +11,4 @@ ratatui-widgets = "0.3"
 crossterm = "0.29"
 chrono = { workspace = true }
 arboard = "3"
+regex = "1"

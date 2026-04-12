@@ -378,6 +378,7 @@ dependencies = [
  "diagnostic-parser",
  "ratatui",
  "ratatui-widgets",
+ "regex",
 ]
 
 [[package]]

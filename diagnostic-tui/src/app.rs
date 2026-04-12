@@ -83,7 +83,7 @@ impl<'a> App<'a> {
 
         let logs = LogsState::new(all_entries);
         let crashes = CrashReportsState::new(has_crashes);
-        let analysis_data = AnalysisData::compute(all_entries, &report.crash_report_entries);
+        let analysis_data = AnalysisData::analyze(all_entries, &report.crash_report_entries);
 
         Self {
             report,
