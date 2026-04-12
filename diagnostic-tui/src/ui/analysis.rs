@@ -1,5 +1,4 @@
 //! Rendering logic for the Analysis tab.
-
 use crate::{
     app::{
         InputMode, Tab,
@@ -272,10 +271,10 @@ impl StatefulWidget for AnalysisWidget<'_> {
         // ===================================================================
         // Section 4: Timeline
         // ===================================================================
-        if !data.timeline_buckets.is_empty() {
+        if !data.time_line.buckets.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
-                    format!("Timeline — errors + warns per {}", data.bucket_label),
+                    format!("Timeline — errors + warns per {}", data.time_line.label),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
@@ -285,9 +284,10 @@ impl StatefulWidget for AnalysisWidget<'_> {
 
             // Time range label.
             if let Some((first, last)) = data
-                .timeline_buckets
+                .time_line
+                .buckets
                 .first()
-                .zip(data.timeline_buckets.last())
+                .zip(data.time_line.buckets.last())
             {
                 lines.extend([
                     Line::from(vec![
@@ -297,7 +297,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
                                 "{} — {} ({} buckets)",
                                 first.start.format("%H:%M"),
                                 last.start.format("%H:%M"),
-                                data.timeline_buckets.len()
+                                data.time_line.buckets.len()
                             ),
                             Style::default().fg(Color::DarkGray),
                         ),
@@ -311,7 +311,8 @@ impl StatefulWidget for AnalysisWidget<'_> {
 
             // Sparkline data.
             let sparkline_data = data
-                .timeline_buckets
+                .time_line
+                .buckets
                 .iter()
                 .map(|b| b.error_count + b.warn_count)
                 .collect::<Vec<_>>();
@@ -325,13 +326,14 @@ impl StatefulWidget for AnalysisWidget<'_> {
             lines.push(Line::from(""));
 
             // Bursts.
-            if !data.bursts.is_empty() {
+            if !data.time_line.bursts.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "  Bursts detected:",
                     Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                 )));
                 lines.extend(
-                    data.bursts
+                    data.time_line
+                        .bursts
                         .iter()
                         .map(|burst| {
                             Line::from(vec![
@@ -342,7 +344,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
                                 ),
                                 Span::raw(format!(
                                     " — {} errors+warns in {}",
-                                    burst.count, data.bucket_label
+                                    burst.count, data.time_line.label
                                 )),
                             ])
                         })
@@ -351,7 +353,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             }
 
             // Gaps.
-            if !data.gaps.is_empty() {
+            if !data.time_line.gaps.is_empty() {
                 lines.push(Line::from(Span::styled(
                     "  Gaps detected:",
                     Style::default()
@@ -360,7 +362,8 @@ impl StatefulWidget for AnalysisWidget<'_> {
                 )));
 
                 lines.extend(
-                    data.gaps
+                    data.time_line
+                        .gaps
                         .iter()
                         .map(|gap| {
                             let duration = if gap.duration.num_hours() > 0 {

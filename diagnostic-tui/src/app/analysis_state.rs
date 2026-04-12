@@ -7,7 +7,11 @@
 use super::pane_state::ScrollablePaneState;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use diagnostic_parser::{LogEntryRef, log_entry::LogLevel, model::CrashReportEntry};
-use std::collections::HashMap;
+use regex::Regex;
+use std::{borrow::Cow, collections::HashMap, sync::LazyLock};
+
+#[cfg(test)]
+mod test;
 
 /// Persistent state for the Analysis tab.
 pub type AnalysisState = ScrollablePaneState;
@@ -26,14 +30,8 @@ pub struct AnalysisData<'a> {
     pub top_errors: Vec<ErrorGroup<'a>>,
     /// Per-component health statistics, sorted by error count descending.
     pub component_health: Vec<ComponentStats<'a>>,
-    /// Timeline buckets for error/warn frequency.
-    pub timeline_buckets: Vec<TimeBucket>,
-    /// Human-readable label for the bucket width (e.g. "5 min", "1 hour").
-    pub bucket_label: String,
-    /// Detected bursts (spikes in error/warn rate).
-    pub bursts: Vec<BurstInfo>,
-    /// Detected gaps (periods with no log entries).
-    pub gaps: Vec<GapInfo>,
+    /// Timeline
+    pub time_line: TimeLine,
     /// Summary of all panic log entries.
     pub panics: Vec<PanicSummary<'a>>,
     /// Crash-to-panic correlations.
@@ -43,7 +41,7 @@ pub struct AnalysisData<'a> {
 /// A group of deduplicated error messages.
 pub struct ErrorGroup<'a> {
     /// The normalized/representative message (truncated).
-    pub message: &'a str,
+    pub message: Cow<'a, str>,
     /// How many entries matched this group.
     pub count: usize,
     /// Components that produced this error.
@@ -96,20 +94,40 @@ pub struct CrashCorrelation<'a> {
     pub matched_panic_message: Option<&'a str>,
 }
 
+struct ErrorMessageData<'a> {
+    count: usize,
+    normalized_message: Cow<'a, str>,
+    components: Vec<&'a str>,
+}
+
+#[derive(Default)]
+struct ComponentCounts {
+    error_count: usize,
+    warn_count: usize,
+    total_count: usize,
+}
+
+#[derive(Default)]
+pub struct TimeLine {
+    pub buckets: Vec<TimeBucket>,
+    pub label: &'static str,
+    pub bursts: Vec<BurstInfo>,
+    pub gaps: Vec<GapInfo>,
+}
+
 // ---------------------------------------------------------------------------
 // Computation
 // ---------------------------------------------------------------------------
 
 impl<'a> AnalysisData<'a> {
     /// Compute all analytics from parsed log entries and crash reports.
-    pub fn compute(entries: &'a [LogEntryRef<'a>], crashes: &'a [CrashReportEntry]) -> Self {
+    pub fn analyze(entries: &'a [LogEntryRef<'a>], crashes: &'a [CrashReportEntry]) -> Self {
         let total_entries = entries.len();
 
         // -- Level counts & component stats (single pass) --
-        let mut level_counts = [0usize; 5];
-        let mut component_map: HashMap<&str, (usize, usize, usize)> = HashMap::new();
-        // (count, components, first full message)
-        let mut error_map: HashMap<&str, (usize, Vec<&str>, &str)> = HashMap::new();
+        let mut level_counts = [0; 5];
+        let mut component_map: HashMap<&str, ComponentCounts> = HashMap::new();
+        let mut error_map: HashMap<Cow<'_, str>, ErrorMessageData> = HashMap::new();
 
         for entry in entries {
             let idx = match entry.level {
@@ -122,34 +140,39 @@ impl<'a> AnalysisData<'a> {
             level_counts[idx] += 1;
 
             let comp = entry.source.component;
-            let stats = component_map.entry(comp).or_insert((0, 0, 0));
-            stats.2 += 1; // total
+            let component_counts = component_map.entry(comp).or_default();
+            component_counts.total_count += 1;
             match entry.level {
-                LogLevel::Error => stats.0 += 1,
-                LogLevel::Warn => stats.1 += 1,
+                LogLevel::Error => component_counts.error_count += 1,
+                LogLevel::Warn => component_counts.warn_count += 1,
                 _ => {}
             }
 
             // Collect errors for deduplication.
             if entry.level == LogLevel::Error {
-                let key = entry.message;
-                let group = error_map
-                    .entry(key)
-                    .or_insert_with(|| (0, Vec::new(), entry.message));
-                group.0 += 1;
-                if !group.1.contains(&comp) {
-                    group.1.push(comp);
+                let normalized = normalize(entry.message);
+                let group =
+                    error_map
+                        .entry(normalized.clone())
+                        .or_insert_with(|| ErrorMessageData {
+                            count: 0,
+                            normalized_message: normalized,
+                            components: Vec::new(),
+                        });
+                group.count += 1;
+                if !group.components.contains(&comp) {
+                    group.components.push(comp);
                 }
             }
         }
 
         // -- Top errors --
         let mut top_errors = error_map
-            .into_iter()
-            .map(|(_, (count, components, message))| ErrorGroup {
-                message,
-                count,
-                components,
+            .into_values()
+            .map(|error_message_data| ErrorGroup {
+                message: error_message_data.normalized_message,
+                count: error_message_data.count,
+                components: error_message_data.components,
             })
             .collect::<Vec<_>>();
         top_errors.sort_by(|a, b| b.count.cmp(&a.count));
@@ -158,11 +181,11 @@ impl<'a> AnalysisData<'a> {
         // -- Component health --
         let mut component_health = component_map
             .into_iter()
-            .map(|(component, (e, w, t))| ComponentStats {
+            .map(|(component, component_counts)| ComponentStats {
                 component,
-                error_count: e,
-                warn_count: w,
-                total_count: t,
+                error_count: component_counts.error_count,
+                warn_count: component_counts.warn_count,
+                total_count: component_counts.total_count,
             })
             .collect::<Vec<_>>();
         component_health.sort_by(|a, b| {
@@ -172,7 +195,7 @@ impl<'a> AnalysisData<'a> {
         });
 
         // -- Timeline --
-        let (timeline_buckets, bucket_label, bursts, gaps) = compute_timeline(entries);
+        let time_line = compute_timeline(entries);
 
         // -- Panics --
         let panics = entries
@@ -208,10 +231,7 @@ impl<'a> AnalysisData<'a> {
             total_entries,
             top_errors,
             component_health,
-            timeline_buckets,
-            bucket_label,
-            bursts,
-            gaps,
+            time_line,
             panics,
             crash_correlations,
         }
@@ -222,11 +242,9 @@ impl<'a> AnalysisData<'a> {
 // Timeline computation
 // ---------------------------------------------------------------------------
 
-fn compute_timeline(
-    entries: &[LogEntryRef<'_>],
-) -> (Vec<TimeBucket>, String, Vec<BurstInfo>, Vec<GapInfo>) {
+fn compute_timeline(entries: &[LogEntryRef<'_>]) -> TimeLine {
     if entries.is_empty() {
-        return (Vec::new(), String::new(), Vec::new(), Vec::new());
+        return TimeLine::default();
     }
 
     let Some((first_ts, last_ts)) = entries
@@ -234,7 +252,7 @@ fn compute_timeline(
         .map(|first| first.timestamp)
         .zip(entries.last().map(|last| last.timestamp))
     else {
-        return (Vec::new(), String::new(), Vec::new(), Vec::new());
+        return TimeLine::default();
     };
 
     let span = last_ts - first_ts;
@@ -282,7 +300,12 @@ fn compute_timeline(
     // We track zero-activity by checking if error+warn is 0 in consecutive buckets.
     let gaps = detect_gaps(&buckets, bucket_delta, entries, first_ts, bucket_secs);
 
-    (buckets, label.to_string(), bursts, gaps)
+    TimeLine {
+        buckets,
+        label,
+        bursts,
+        gaps,
+    }
 }
 
 fn detect_bursts(buckets: &[TimeBucket], counts: &[u64]) -> Vec<BurstInfo> {
@@ -384,54 +407,12 @@ fn detect_gaps(
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Normalize an error message for deduplication grouping.
-/// Takes first 80 chars and replaces long hex sequences and numeric runs.
-#[expect(dead_code, reason = "May use this again as an option")]
-fn normalize_error_message(msg: &str) -> String {
-    let truncated = truncate_str(msg, 80);
-    let mut result = String::with_capacity(truncated.len());
-    let mut run_buf = String::new();
-    let mut hex_run = 0;
-    let mut digit_run = 0;
+/// Matcher for a 26 character uuid.
+static ID_MATCHER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z0-9]{26}").unwrap());
 
-    for ch in truncated.chars() {
-        if ch.is_ascii_hexdigit() {
-            hex_run += 1;
-            if ch.is_ascii_digit() {
-                digit_run += 1;
-            }
-            run_buf.push(ch);
-        } else {
-            if hex_run >= 8 {
-                result.push_str("<id>");
-            } else if digit_run >= 5 {
-                result.push_str("<N>");
-            } else {
-                result.push_str(&run_buf);
-            }
-            run_buf.clear();
-            hex_run = 0;
-            digit_run = 0;
-            result.push(ch);
-        }
-    }
-    // Flush trailing run.
-    if hex_run >= 8 {
-        result.push_str("<id>");
-    } else if digit_run >= 5 {
-        result.push_str("<N>");
-    } else {
-        result.push_str(&run_buf);
-    }
-
-    result
-}
-
-fn truncate_str(s: &str, max_chars: usize) -> &str {
-    match s.char_indices().nth(max_chars) {
-        Some((idx, _)) => &s[..idx],
-        None => s,
-    }
+/// Add any known IDs to be stripped out for error message normalization.
+fn normalize<'a>(msg: &'a str) -> Cow<'a, str> {
+    ID_MATCHER.replace_all(msg, "<ID>")
 }
 
 // ---------------------------------------------------------------------------
@@ -507,24 +488,25 @@ impl AnalysisData<'_> {
         // UI: header, blank, time-range label, blank = 4 Lines
         //     then Sparkline segment (height=3)
         //     then blank, bursts/gaps lines, trailing blank
-        if !self.timeline_buckets.is_empty() {
+        if !self.time_line.buckets.is_empty() {
             lines.extend([
-                format!("Timeline — errors + warns per {}", self.bucket_label),
+                format!("Timeline — errors + warns per {}", self.time_line.label),
                 String::new(),
             ]);
 
             // Time range label (matches UI line).
             if let Some((first, last)) = self
-                .timeline_buckets
+                .time_line
+                .buckets
                 .first()
-                .zip(self.timeline_buckets.last())
+                .zip(self.time_line.buckets.last())
             {
                 lines.extend([
                     format!(
                         "  {} — {} ({} buckets)",
                         first.start.format("%H:%M"),
                         last.start.format("%H:%M"),
-                        self.timeline_buckets.len()
+                        self.time_line.buckets.len()
                     ),
                     String::new(),
                 ]);
@@ -539,23 +521,23 @@ impl AnalysisData<'_> {
             ]);
 
             // Bursts.
-            if !self.bursts.is_empty() {
+            if !self.time_line.bursts.is_empty() {
                 lines.push("  Bursts detected:".to_string());
-                lines.extend(self.bursts.iter().map(|burst| {
+                lines.extend(self.time_line.bursts.iter().map(|burst| {
                     format!(
                         "    {} — {} errors+warns in {}",
                         burst.start.format("%H:%M"),
                         burst.count,
-                        self.bucket_label
+                        self.time_line.label
                     )
                 }));
                 lines.push(String::new());
             }
 
             // Gaps.
-            if !self.gaps.is_empty() {
+            if !self.time_line.gaps.is_empty() {
                 lines.push("  Gaps detected:".to_string());
-                lines.extend(self.gaps.iter().map(|gap| {
+                lines.extend(self.time_line.gaps.iter().map(|gap| {
                     let duration = if gap.duration.num_hours() > 0 {
                         format!(
                             "{}h {}m",
