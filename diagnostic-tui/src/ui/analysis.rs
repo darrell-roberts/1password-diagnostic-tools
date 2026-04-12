@@ -24,7 +24,7 @@ use std::{
 
 /// Widget for the Analysis tab, holding borrowed immutable data.
 pub struct AnalysisWidget<'a> {
-    pub data: &'a AnalysisData,
+    pub data: &'a AnalysisData<'a>,
     pub input_mode: InputMode,
     pub tab: Tab,
     pub copied_at: Option<Instant>,
@@ -421,7 +421,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
                                 ),
                                 Span::raw(format!("  [{}]", panic.thread)),
                             ]),
-                            Line::from(vec![Span::raw("      "), Span::raw(&*panic.message)]),
+                            Line::from(vec![Span::raw("      "), Span::raw(panic.message)]),
                             Line::from(vec![
                                 Span::raw("      "),
                                 Span::styled(
@@ -462,7 +462,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
                     Some(Line::from(vec![
                         Span::raw("  "),
                         Span::styled(
-                            &*corr.report_id,
+                            corr.report_id,
                             Style::default()
                                 .fg(Color::Yellow)
                                 .add_modifier(Modifier::BOLD),
@@ -473,12 +473,11 @@ impl StatefulWidget for AnalysisWidget<'_> {
                         Line::from(vec![Span::raw("    Crash at: "), Span::raw(ts.as_str())])
                     }),
                     corr.matched_panic_message
-                        .as_ref()
                         .map(|msg| {
                             Line::from(vec![
                                 Span::raw("    "),
                                 Span::styled("Matched: ", Style::default().fg(Color::Green)),
-                                Span::raw(msg.as_str()),
+                                Span::raw(msg),
                             ])
                         })
                         .or_else(|| {

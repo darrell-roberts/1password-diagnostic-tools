@@ -36,6 +36,8 @@ pub struct LogsState<'a> {
     // -- Filtering --
     /// The search query string.
     pub search_query: String,
+    /// Number of search hits.
+    pub search_hits: usize,
     /// Log level filter.
     pub level_filter: LevelFilter,
     /// Source component filter.
@@ -84,6 +86,7 @@ impl<'a> LogsState<'a> {
             show_detail: false,
             detail_focused: false,
             search_query: String::new(),
+            search_hits: 0,
             level_filter: LevelFilter::default(),
             source_filter,
             log_file_filter,
@@ -233,19 +236,32 @@ impl<'a> LogsState<'a> {
             }
         }
     }
+
+    pub fn compute_search_hits(&mut self, all_entries: &'a [LogEntryRef<'a>]) {
+        if self.search_query.is_empty() || self.filtered_indices.is_empty() {
+            self.search_hits = 0;
+            return;
+        }
+
+        let query_lower = self.search_query.to_lowercase();
+        self.search_hits = all_entries
+            .iter()
+            .filter(|entry| contains_case_insensitive(entry.message, &query_lower))
+            .count();
+    }
 }
 
 // -----------------------------------------------------------------------
 // Search navigation
 // -----------------------------------------------------------------------
 
-fn contains_case_insensitive(haystack: &str, needle_lower: &str) -> bool {
-    // needle_lower is already lowercased once by the caller.
-    let needle = needle_lower.as_bytes();
-    haystack
+fn contains_case_insensitive(target: &str, search: &str) -> bool {
+    // search is already lowercased once by the caller.
+    let search = search.as_bytes();
+    target
         .as_bytes()
-        .windows(needle.len())
-        .any(|window| window.eq_ignore_ascii_case(needle))
+        .windows(search.len())
+        .any(|window| window.eq_ignore_ascii_case(search))
 }
 
 /// Returns `true` if the entry at `all_entries[idx]` matches the current

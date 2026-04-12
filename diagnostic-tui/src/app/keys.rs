@@ -32,6 +32,7 @@ impl App<'_> {
             KeyCode::Esc => {
                 self.logs.search_query.clear();
                 self.input_mode = InputMode::Normal;
+                self.logs.compute_search_hits(self.all_entries);
             }
             KeyCode::Enter => {
                 self.input_mode = InputMode::Normal;
@@ -39,13 +40,16 @@ impl App<'_> {
             KeyCode::Backspace => {
                 self.logs.search_query.pop();
                 self.logs.find_nearest(self.all_entries);
+                self.logs.compute_search_hits(self.all_entries);
             }
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.logs.search_query.clear();
+                self.logs.compute_search_hits(self.all_entries);
             }
             KeyCode::Char(c) => {
                 self.logs.search_query.push(c);
                 self.logs.find_nearest(self.all_entries);
+                self.logs.compute_search_hits(self.all_entries);
             }
             _ => {}
         }
