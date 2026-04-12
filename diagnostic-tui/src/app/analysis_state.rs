@@ -289,7 +289,7 @@ fn compute_timeline(entries: &[LogEntryRef<'_>]) -> TimeLine {
         }
     }
 
-    // Detect bursts: mean + 2*stddev.
+    // Detect bursts: mean + 2 * standard deviation.
     let counts = buckets
         .iter()
         .map(|b| b.error_count + b.warn_count)
@@ -314,15 +314,15 @@ fn detect_bursts(buckets: &[TimeBucket], counts: &[u64]) -> Vec<BurstInfo> {
     }
 
     let sum: f64 = counts.iter().map(|&c| c as f64).sum();
-    let n = counts.len() as f64;
-    let mean = sum / n;
+    let total_counts = counts.len() as f64;
+    let mean = sum / total_counts;
     let variance: f64 = counts
         .iter()
         .map(|&c| (c as f64 - mean).powi(2))
         .sum::<f64>()
-        / n;
-    let stddev = variance.sqrt();
-    let threshold = mean + 2.0 * stddev;
+        / total_counts;
+    let standard_deviation = variance.sqrt();
+    let threshold = mean + 2.0 * standard_deviation;
 
     // Only report bursts if threshold is meaningful (> 2).
     if threshold < 2.0 {
