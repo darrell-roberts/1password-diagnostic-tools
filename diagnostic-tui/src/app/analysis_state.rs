@@ -408,7 +408,7 @@ fn detect_gaps(
 // ---------------------------------------------------------------------------
 
 /// Matcher for a 26 character uuid.
-static ID_MATCHER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Z0-9]{26}").unwrap());
+static ID_MATCHER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9]{26}").unwrap());
 
 /// Add any known IDs to be stripped out for error message normalization.
 fn normalize<'a>(msg: &'a str) -> Cow<'a, str> {
