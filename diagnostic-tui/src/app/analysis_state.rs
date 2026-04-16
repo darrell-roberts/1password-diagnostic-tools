@@ -175,7 +175,7 @@ impl<'a> AnalysisData<'a> {
                 components: error_message_data.components,
             })
             .collect::<Vec<_>>();
-        top_errors.sort_by(|a, b| b.count.cmp(&a.count));
+        top_errors.sort_by_key(|error_group| std::cmp::Reverse(error_group.count));
         top_errors.truncate(20);
 
         // -- Component health --
@@ -289,12 +289,7 @@ fn compute_timeline(entries: &[LogEntryRef<'_>]) -> TimeLine {
         }
     }
 
-    // Detect bursts: mean + 2 * standard deviation.
-    let counts = buckets
-        .iter()
-        .map(|b| b.error_count + b.warn_count)
-        .collect::<Vec<_>>();
-    let bursts = detect_bursts(&buckets, &counts);
+    let bursts = detect_bursts(&buckets);
 
     // Detect gaps: consecutive buckets with zero entries of any level.
     // We track zero-activity by checking if error+warn is 0 in consecutive buckets.
@@ -308,7 +303,13 @@ fn compute_timeline(entries: &[LogEntryRef<'_>]) -> TimeLine {
     }
 }
 
-fn detect_bursts(buckets: &[TimeBucket], counts: &[u64]) -> Vec<BurstInfo> {
+fn detect_bursts(buckets: &[TimeBucket]) -> Vec<BurstInfo> {
+    // Detect bursts: mean + 2 * standard deviation.
+    let counts = buckets
+        .iter()
+        .map(|b| b.error_count + b.warn_count)
+        .collect::<Vec<_>>();
+
     if counts.is_empty() {
         return Vec::new();
     }

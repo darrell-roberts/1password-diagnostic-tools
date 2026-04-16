@@ -90,13 +90,13 @@ impl App<'_> {
             }
 
             // Tab switching.
-            KeyCode::Tab | KeyCode::Right if key.modifiers.is_empty() && self.tab_nav_keys() => {
-                if key.code == KeyCode::Tab {
-                    self.tab = self.tab.next();
-                    self.logs.detail_focused = false;
-                    self.crashes.detail_focused = false;
-                    self.logs.show_detail = false;
-                }
+            KeyCode::Tab | KeyCode::Right
+                if key.modifiers.is_empty() && self.tab_nav_keys() && key.code == KeyCode::Tab =>
+            {
+                self.tab = self.tab.next();
+                self.logs.detail_focused = false;
+                self.crashes.detail_focused = false;
+                self.logs.show_detail = false;
             }
             KeyCode::BackTab => {
                 self.tab = self.tab.prev();
@@ -497,17 +497,13 @@ impl App<'_> {
         match key.code {
             KeyCode::Esc => {}
             KeyCode::Char('y') => {}
-            KeyCode::Up | KeyCode::Char('k') => {
-                if *cursor > 0 {
-                    *cursor -= 1;
-                    ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
-                }
+            KeyCode::Up | KeyCode::Char('k') if *cursor > 0 => {
+                *cursor -= 1;
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if line_count > 0 && *cursor + 1 < line_count {
-                    *cursor += 1;
-                    ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
-                }
+            KeyCode::Down | KeyCode::Char('j') if line_count > 0 && *cursor + 1 < line_count => {
+                *cursor += 1;
+                ensure_cursor_visible(*cursor, scroll, viewport_horizontal);
             }
             KeyCode::PageUp => {
                 *cursor = cursor.saturating_sub(page);
@@ -576,33 +572,25 @@ impl App<'_> {
             KeyCode::Esc | KeyCode::Char('S') | KeyCode::Char('s') => {
                 self.logs.show_source_picker = false;
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.logs.source_picker_selected > 0 {
-                    self.logs.source_picker_selected -= 1;
-                }
+            KeyCode::Up | KeyCode::Char('k') if self.logs.source_picker_selected > 0 => {
+                self.logs.source_picker_selected -= 1;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.logs.source_picker_selected + 1 < total {
-                    self.logs.source_picker_selected += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j') if self.logs.source_picker_selected + 1 < total => {
+                self.logs.source_picker_selected += 1;
             }
             KeyCode::PageUp => {
                 self.logs.source_picker_selected =
                     self.logs.source_picker_selected.saturating_sub(page);
             }
-            KeyCode::PageDown => {
-                if total > 0 {
-                    self.logs.source_picker_selected =
-                        (self.logs.source_picker_selected + page).min(total - 1);
-                }
+            KeyCode::PageDown if total > 0 => {
+                self.logs.source_picker_selected =
+                    (self.logs.source_picker_selected + page).min(total - 1);
             }
             KeyCode::Home | KeyCode::Char('g') => {
                 self.logs.source_picker_selected = 0;
             }
-            KeyCode::End | KeyCode::Char('G') => {
-                if total > 0 {
-                    self.logs.source_picker_selected = total - 1;
-                }
+            KeyCode::End | KeyCode::Char('G') if total > 0 => {
+                self.logs.source_picker_selected = total - 1;
             }
             KeyCode::Enter => {
                 if self.logs.source_picker_selected == 0 {
@@ -627,33 +615,27 @@ impl App<'_> {
             KeyCode::Esc | KeyCode::Char('L') | KeyCode::Char('l') => {
                 self.logs.show_log_file_picker = false;
             }
-            KeyCode::Up | KeyCode::Char('k') => {
-                if self.logs.log_file_picker_selected > 0 {
-                    self.logs.log_file_picker_selected -= 1;
-                }
+            KeyCode::Up | KeyCode::Char('k') if self.logs.log_file_picker_selected > 0 => {
+                self.logs.log_file_picker_selected -= 1;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if self.logs.log_file_picker_selected + 1 < total {
-                    self.logs.log_file_picker_selected += 1;
-                }
+            KeyCode::Down | KeyCode::Char('j')
+                if self.logs.log_file_picker_selected + 1 < total =>
+            {
+                self.logs.log_file_picker_selected += 1;
             }
             KeyCode::PageUp => {
                 self.logs.log_file_picker_selected =
                     self.logs.log_file_picker_selected.saturating_sub(page);
             }
-            KeyCode::PageDown => {
-                if total > 0 {
-                    self.logs.log_file_picker_selected =
-                        (self.logs.log_file_picker_selected + page).min(total - 1);
-                }
+            KeyCode::PageDown if total > 0 => {
+                self.logs.log_file_picker_selected =
+                    (self.logs.log_file_picker_selected + page).min(total - 1);
             }
             KeyCode::Home | KeyCode::Char('g') => {
                 self.logs.log_file_picker_selected = 0;
             }
-            KeyCode::End | KeyCode::Char('G') => {
-                if total > 0 {
-                    self.logs.log_file_picker_selected = total - 1;
-                }
+            KeyCode::End | KeyCode::Char('G') if total > 0 => {
+                self.logs.log_file_picker_selected = total - 1;
             }
             KeyCode::Enter => {
                 if self.logs.log_file_picker_selected == 0 {
