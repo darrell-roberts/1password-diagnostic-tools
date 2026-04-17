@@ -17,7 +17,7 @@ use ratatui::{
 // Source picker
 // ---------------------------------------------------------------------------
 
-/// Draw the source component picker popup centred on the screen.
+/// Draw the source component picker popup centered on the screen.
 pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute popup dimensions based on content.
     let max_source_len = app
@@ -59,22 +59,30 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual source entries.
-    for (i, source) in app.logs.source_filter.available.iter().copied().enumerate() {
-        let picker_idx = i + 1;
-        let is_highlighted = app.logs.source_picker_selected == picker_idx;
-        let is_active = app.logs.source_filter.selected == Some(i);
+    items.extend(
+        app.logs
+            .source_filter
+            .available
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, source)| {
+                let picker_idx = i + 1;
+                let is_highlighted = app.logs.source_picker_selected == picker_idx;
+                let is_active = app.logs.source_filter.selected == Some(i);
 
-        let style = if is_highlighted {
-            Style::new().reversed()
-        } else {
-            Style::default().fg(Color::White)
-        };
-        let prefix = if is_active { "● " } else { "  " };
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(prefix, style),
-            Span::styled(source, style),
-        ])));
-    }
+                let style = if is_highlighted {
+                    Style::new().reversed()
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let prefix = if is_active { "● " } else { "  " };
+                ListItem::new(Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(source, style),
+                ]))
+            }),
+    );
 
     let list = List::new(items).block(
         Block::default()
@@ -138,29 +146,30 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     ])));
 
     // Individual log file entries.
-    for (i, log_file) in app
-        .logs
-        .log_file_filter
-        .available
-        .iter()
-        .copied()
-        .enumerate()
-    {
-        let picker_idx = i + 1;
-        let is_highlighted = app.logs.log_file_picker_selected == picker_idx;
-        let is_active = app.logs.log_file_filter.selected == Some(i);
+    items.extend(
+        app.logs
+            .log_file_filter
+            .available
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, log_file)| {
+                let picker_idx = i + 1;
+                let is_highlighted = app.logs.log_file_picker_selected == picker_idx;
+                let is_active = app.logs.log_file_filter.selected == Some(i);
 
-        let style = if is_highlighted {
-            Style::new().reversed().add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        let prefix = if is_active { "● " } else { "  " };
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(prefix, style),
-            Span::styled(log_file, style),
-        ])));
-    }
+                let style = if is_highlighted {
+                    Style::new().reversed().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+                let prefix = if is_active { "● " } else { "  " };
+                ListItem::new(Line::from(vec![
+                    Span::styled(prefix, style),
+                    Span::styled(log_file, style),
+                ]))
+            }),
+    );
 
     let list = List::new(items).block(
         Block::default()
