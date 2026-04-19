@@ -21,19 +21,13 @@ use std::{io, process};
 mod app;
 mod ui;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Some(path) = std::env::args().nth(1) else {
         eprintln!("usage: diagnostic-tui <path-to-.1pdiagnostics>");
         process::exit(1);
     };
 
-    let report = match DiagnosticReport::from_file(&path) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("error: {e}");
-            process::exit(1);
-        }
-    };
+    let report = DiagnosticReport::from_file(&path)?;
 
     // Ensure the terminal is restored if the app panics.
     let default_hook = std::panic::take_hook();
@@ -43,10 +37,7 @@ fn main() {
         default_hook(info);
     }));
 
-    if let Err(e) = run_tui(report) {
-        eprintln!("error: {e}");
-        process::exit(1);
-    }
+    run_tui(report).map_err(Into::into)
 }
 
 fn run_tui(report: DiagnosticReport) -> io::Result<()> {
