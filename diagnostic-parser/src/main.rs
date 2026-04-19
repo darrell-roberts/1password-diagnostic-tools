@@ -66,7 +66,7 @@ fn main() {
     println!();
 
     // ── Parsed log entries (zero-copy) ───────────────────────────────
-    let (entries, interner) = report.parse_log_entries_ref();
+    let (entries, cache) = report.parse_log_entries_ref();
     let mut by_level: HashMap<LogLevel, usize> = HashMap::new();
     let mut with_stack_trace = 0usize;
     for entry in &entries {
@@ -89,7 +89,7 @@ fn main() {
         }
     }
     println!("  With stack traces: {with_stack_trace}");
-    println!("  Interned strings: {}", interner.len());
+    println!("  Cached strings: {}", cache.len());
     println!();
 
     // ── Crash reports with stack traces ──────────────────────────────

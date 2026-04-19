@@ -4,7 +4,7 @@ use super::{
     filters::{LevelFilter, LogFileFilter, SourceFilter},
     navigation::ensure_cursor_visible,
 };
-use diagnostic_parser::LogEntryRef;
+use diagnostic_parser::LogEntry;
 use ratatui::widgets::{ScrollbarState, TableState};
 
 /// Persistent state for the Logs tab.
@@ -68,7 +68,7 @@ pub struct LogsState<'a> {
 }
 
 impl<'a> LogsState<'a> {
-    pub fn new(all_entries: &'a [LogEntryRef<'a>]) -> Self {
+    pub fn new(all_entries: &'a [LogEntry<'a>]) -> Self {
         let source_filter = SourceFilter::new(all_entries);
         let log_file_filter = LogFileFilter::new(all_entries);
         let filtered_indices: Vec<usize> = (0..all_entries.len()).collect();
@@ -137,13 +137,13 @@ impl<'a> LogsState<'a> {
     // -----------------------------------------------------------------------
 
     /// Recompute `filtered_indices` based on current filters.
-    pub fn refilter(&mut self, all_entries: &[LogEntryRef<'_>]) {
+    pub fn refilter(&mut self, all_entries: &[LogEntry<'_>]) {
         self.refilter_inner(all_entries, None);
     }
 
     pub(crate) fn refilter_inner(
         &mut self,
-        all_entries: &[LogEntryRef<'_>],
+        all_entries: &[LogEntry<'_>],
         pinned_all_entry_idx: Option<usize>,
     ) {
         self.filtered_indices = all_entries
@@ -177,7 +177,7 @@ impl<'a> LogsState<'a> {
     }
 
     /// Move the cursor forward to the next entry matching the search query.
-    pub fn find_next(&mut self, all_entries: &[LogEntryRef<'_>]) {
+    pub fn find_next(&mut self, all_entries: &[LogEntry<'_>]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
         }
@@ -197,7 +197,7 @@ impl<'a> LogsState<'a> {
     }
 
     /// Move the cursor backward to the previous entry matching the search query.
-    pub fn find_prev(&mut self, all_entries: &[LogEntryRef<'_>]) {
+    pub fn find_prev(&mut self, all_entries: &[LogEntry<'_>]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
         }
@@ -218,7 +218,7 @@ impl<'a> LogsState<'a> {
 
     /// Move the cursor to the nearest matching entry at or after the current
     /// position. Used for live search-as-you-type.
-    pub fn find_nearest(&mut self, all_entries: &[LogEntryRef<'_>]) {
+    pub fn find_nearest(&mut self, all_entries: &[LogEntry<'_>]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
         }
@@ -237,7 +237,7 @@ impl<'a> LogsState<'a> {
         }
     }
 
-    pub fn compute_search_hits(&mut self, all_entries: &'a [LogEntryRef<'a>]) {
+    pub fn compute_search_hits(&mut self, all_entries: &'a [LogEntry<'a>]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             self.search_hits = 0;
             return;
@@ -266,7 +266,7 @@ fn contains_case_insensitive(target: &str, search: &str) -> bool {
 
 /// Returns `true` if the entry at `all_entries[idx]` matches the current
 /// search query (case-insensitive substring in message or continuation).
-fn entry_matches_query(all_entries: &[LogEntryRef<'_>], idx: usize, query_lower: &str) -> bool {
+fn entry_matches_query(all_entries: &[LogEntry<'_>], idx: usize, query_lower: &str) -> bool {
     if query_lower.is_empty() {
         return false;
     }

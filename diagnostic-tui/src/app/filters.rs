@@ -1,6 +1,8 @@
 //! Log entry filter types: level, source component, and log file.
 
-use diagnostic_parser::{LogEntryRef, log_entry::LogLevel};
+use std::collections::HashSet;
+
+use diagnostic_parser::{LogEntry, log_entry::LogLevel};
 
 // ---------------------------------------------------------------------------
 // Log level filter
@@ -118,20 +120,20 @@ pub struct SourceFilter<'a> {
 }
 
 impl<'a> SourceFilter<'a> {
-    pub fn new(entries: &[LogEntryRef<'a>]) -> Self {
-        let mut components = entries
+    pub fn new(entries: &[LogEntry<'a>]) -> Self {
+        let components_set = entries
             .iter()
             .map(|e| e.source.component)
-            .collect::<Vec<_>>();
+            .collect::<HashSet<_>>();
+        let mut components = Vec::from_iter(components_set);
         components.sort();
-        components.dedup();
         Self {
             available: components,
             selected: None,
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
+    pub fn accepts(&self, entry: &LogEntry<'_>) -> bool {
         match self.selected {
             None => true,
             Some(idx) => entry.source.component == self.available[idx],
@@ -171,20 +173,20 @@ pub struct LogFileFilter<'a> {
 }
 
 impl<'a> LogFileFilter<'a> {
-    pub fn new(entries: &'a [LogEntryRef<'a>]) -> Self {
-        let mut log_files = entries
+    pub fn new(entries: &'a [LogEntry<'a>]) -> Self {
+        let log_files_set = entries
             .iter()
             .map(|e| e.log_file_title.as_ref())
-            .collect::<Vec<_>>();
+            .collect::<HashSet<_>>();
+        let mut log_files = Vec::from_iter(log_files_set);
         log_files.sort();
-        log_files.dedup();
         Self {
             available: log_files,
             selected: None,
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
+    pub fn accepts(&self, entry: &LogEntry<'_>) -> bool {
         match self.selected {
             None => true,
             Some(idx) => entry.log_file_title.as_ref() == self.available[idx],

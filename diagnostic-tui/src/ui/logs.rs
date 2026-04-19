@@ -6,7 +6,7 @@ use crate::{
     ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG, level_color, level_filter_color},
 };
 use chrono::Local;
-use diagnostic_parser::LogEntryRef;
+use diagnostic_parser::LogEntry;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Margin, Rect},
@@ -24,7 +24,7 @@ use std::{
 
 /// Widget for the Logs tab, holding borrowed immutable data.
 pub struct LogsWidget<'a> {
-    pub all_entries: &'a [LogEntryRef<'a>],
+    pub all_entries: &'a [LogEntry<'a>],
     pub input_mode: InputMode,
     pub copied_at: Option<Instant>,
     pub copied_count: usize,

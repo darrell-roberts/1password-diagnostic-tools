@@ -6,7 +6,7 @@ use crate::{
 };
 use chrono::Local;
 use diagnostic_parser::{
-    LogEntryRef,
+    LogEntry,
     model::{CrashReportEntry, DiagnosticReport},
 };
 use ratatui::{
@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 /// Widget for the Crash Reports tab, holding borrowed immutable data.
 pub struct CrashReportsWidget<'a> {
     pub report: &'a DiagnosticReport,
-    pub all_entries: &'a [LogEntryRef<'a>],
+    pub all_entries: &'a [LogEntry<'a>],
     pub tab: Tab,
     pub copied_at: Option<Instant>,
     pub copied_count: usize,
@@ -193,7 +193,7 @@ fn render_crash_list(
 fn render_crash_detail(
     state: &mut CrashReportsState,
     crash_entries: &[CrashReportEntry],
-    all_entries: &[LogEntryRef<'_>],
+    all_entries: &[LogEntry<'_>],
     copied_at: Option<Instant>,
     copied_count: usize,
     area: Rect,
@@ -454,7 +454,7 @@ fn render_crash_detail(
 
 fn crash_report_plain_lines(
     crash: &CrashReportEntry,
-    panic_entry: Option<&LogEntryRef<'_>>,
+    panic_entry: Option<&LogEntry<'_>>,
 ) -> Vec<String> {
     let ts = crash
         .timestamp_utc()

@@ -115,40 +115,15 @@ fn log_file_category() {
 }
 
 #[test]
-fn parse_log_entries() {
-    let report = DiagnosticReport::from_str(minimal_json()).unwrap();
-    let entries = report.parse_log_entries();
-    assert_eq!(entries.len(), 2);
-}
-
-#[test]
 fn parse_log_entries_ref() {
     let report = DiagnosticReport::from_str(minimal_json()).unwrap();
-    let (entries, interner) = report.parse_log_entries_ref();
+    let (entries, cache) = report.parse_log_entries_ref();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].level, crate::LogLevel::Info);
     assert_eq!(entries[1].level, crate::LogLevel::Warn);
     assert_eq!(&*entries[0].log_file_title, "/1Password_r00001");
-    // The interner should have the log file title + thread id(s).
-    assert!(interner.len() >= 2);
-}
-
-#[test]
-fn parse_log_entries_ref_matches_owned() {
-    let report = DiagnosticReport::from_str(minimal_json()).unwrap();
-    let owned = report.parse_log_entries();
-    let (refs, _interner) = report.parse_log_entries_ref();
-
-    assert_eq!(owned.len(), refs.len());
-    for (o, r) in owned.iter().zip(refs.iter()) {
-        assert_eq!(o.level, r.level);
-        assert_eq!(o.timestamp, r.timestamp);
-        assert_eq!(o.thread, &*r.thread);
-        assert_eq!(o.source.component, r.source.component);
-        assert_eq!(o.source.detail.as_deref(), r.source.detail);
-        assert_eq!(o.message, r.message);
-        assert_eq!(o.continuation.len(), r.continuation.len());
-    }
+    // The cache should have the log file title + thread id(s).
+    assert!(cache.len() >= 2);
 }
 
 #[test]
