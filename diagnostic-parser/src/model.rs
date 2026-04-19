@@ -13,7 +13,7 @@
 
 use crate::{
     error::{DiagnosticError, Result},
-    log_entry::{LogEntry, LogEntryLike, LogEntryRef, StringInterner},
+    log_entry::{LogEntry, LogEntryLike, LogEntryRef, StringCache},
 };
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -136,7 +136,7 @@ impl DiagnosticReport {
     /// Returns [`LogEntryRef`] values that borrow `&str` slices directly
     /// from the [`LogFile::content`] strings already owned by this report.
     /// High-repetition fields (`log_file_title`, `thread`) are shared via
-    /// [`Arc<str>`](std::sync::Arc) through a [`StringInterner`].
+    /// [`Arc<str>`](std::sync::Arc) through a [`StringCache`].
     ///
     /// For a typical 36 MB diagnostic file with ~127 k log entries this
     /// eliminates ~638 k `String` allocations (~33 MB of heap), reducing
@@ -144,18 +144,18 @@ impl DiagnosticReport {
     ///
     /// The returned entries borrow from `&self`, so the report must outlive
     /// the entries.
-    pub fn parse_log_entries_ref(&self) -> (Vec<LogEntryRef<'_>>, StringInterner) {
-        let mut interner = StringInterner::new();
+    pub fn parse_log_entries_ref(&self) -> (Vec<LogEntryRef<'_>>, StringCache) {
+        let mut cache = StringCache::new();
         let mut all_entries: Vec<LogEntryRef<'_>> = Vec::new();
 
         for log_file in &self.logs {
             let entries =
-                LogEntryRef::parse_log_content(&log_file.title, &log_file.content, &mut interner);
+                LogEntryRef::parse_log_content(&log_file.title, &log_file.content, &mut cache);
             all_entries.extend(entries);
         }
 
         all_entries.sort_by_key(|e| e.timestamp);
-        (all_entries, interner)
+        (all_entries, cache)
     }
 
     /// Total number of individual log lines across all log files.
@@ -671,8 +671,8 @@ impl LogFile {
     }
 
     /// Zero-copy version of [`parse_entries`](Self::parse_entries).
-    pub fn parse_entries_ref<'a>(&'a self, interner: &mut StringInterner) -> Vec<LogEntryRef<'a>> {
-        LogEntryRef::parse_log_content(&self.title, &self.content, interner)
+    pub fn parse_entries_ref<'a>(&'a self, cache: &mut StringCache) -> Vec<LogEntryRef<'a>> {
+        LogEntryRef::parse_log_content(&self.title, &self.content, cache)
     }
 
     /// Number of non-empty lines in this log file.

@@ -192,8 +192,8 @@ fn log_file_title_preserved() {
 
 #[test]
 fn ref_parse_info_line() {
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut cache);
     assert_eq!(entries.len(), 1);
     let entry = &entries[0];
     assert_eq!(entry.level, LogLevel::Info);
@@ -214,8 +214,8 @@ fn ref_parse_info_line() {
 
 #[test]
 fn ref_parse_error_compound_thread() {
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("test", SAMPLE_ERROR, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("test", SAMPLE_ERROR, &mut cache);
     assert_eq!(entries.len(), 1);
     let entry = &entries[0];
     assert_eq!(entry.level, LogLevel::Error);
@@ -232,8 +232,8 @@ ERROR 2026-03-05T19:22:01.469+00:00 runtime-worker(ThreadId(3)) [1P:op-crash-rep
    1: std::panicking::panic_with_hook
 INFO  2026-03-05T19:22:02.000+00:00 ThreadId(6) [1P:some/module.rs:10] recovered";
 
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("test_file", content, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("test_file", content, &mut cache);
     assert_eq!(entries.len(), 2);
 
     assert_eq!(entries[0].continuation.len(), 2);
@@ -253,8 +253,8 @@ ERROR 2026-03-05T19:22:01.469+00:00 ThreadId(1) [1P:lib.rs:1] panic
    0: frame_a
    1: frame_b";
 
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("f", content, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("f", content, &mut cache);
     assert_eq!(entries.len(), 1);
     let full = entries[0].full_message();
     assert!(full.starts_with("panic"));
@@ -264,8 +264,8 @@ ERROR 2026-03-05T19:22:01.469+00:00 ThreadId(1) [1P:lib.rs:1] panic
 
 #[test]
 fn ref_to_owned_roundtrip() {
-    let mut interner = StringInterner::new();
-    let refs = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut interner);
+    let mut cache = StringCache::new();
+    let refs = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut cache);
     let owned = refs[0].to_owned();
 
     assert_eq!(owned.log_file_title, "test");
@@ -279,8 +279,8 @@ fn ref_to_owned_roundtrip() {
 
 #[test]
 fn ref_display() {
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut cache);
     let display = entries[0].to_string();
     assert!(display.contains("INFO"));
     assert!(display.contains("Settings file created"));
@@ -288,44 +288,44 @@ fn ref_display() {
 
 #[test]
 fn ref_timestamp_utc() {
-    let mut interner = StringInterner::new();
-    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut interner);
+    let mut cache = StringCache::new();
+    let entries = LogEntryRef::parse_log_content("test", SAMPLE_INFO, &mut cache);
     let utc = entries[0].timestamp_utc();
     assert_eq!(utc.date_naive().year(), 2026);
 }
 
 #[test]
 fn ref_empty_content() {
-    let mut interner = StringInterner::new();
-    assert!(LogEntryRef::parse_log_content("e", "", &mut interner).is_empty());
-    assert!(LogEntryRef::parse_log_content("b", "\n\n\n", &mut interner).is_empty());
+    let mut cache = StringCache::new();
+    assert!(LogEntryRef::parse_log_content("e", "", &mut cache).is_empty());
+    assert!(LogEntryRef::parse_log_content("b", "\n\n\n", &mut cache).is_empty());
 }
 
-// ── String interner tests ────────────────────────────────────────
+// ── String cache tests ────────────────────────────────────────
 
 #[test]
-fn interner_deduplicates() {
-    let mut interner = StringInterner::new();
-    let a1 = interner.intern("ThreadId(6)");
-    let a2 = interner.intern("ThreadId(6)");
-    let b = interner.intern("ThreadId(7)");
+fn cache_deduplicates() {
+    let mut cache = StringCache::new();
+    let a1 = cache.cached("ThreadId(6)");
+    let a2 = cache.cached("ThreadId(6)");
+    let b = cache.cached("ThreadId(7)");
 
     // Same pointer for identical strings.
     assert!(Arc::ptr_eq(&a1, &a2));
     // Different pointer for different strings.
     assert!(!Arc::ptr_eq(&a1, &b));
-    assert_eq!(interner.len(), 2);
+    assert_eq!(cache.len(), 2);
 }
 
 #[test]
-fn interner_shared_across_files() {
-    let mut interner = StringInterner::new();
+fn cache_shared_across_files() {
+    let mut cache = StringCache::new();
 
     let content1 = "INFO  2026-03-05T19:36:06.278+00:00 ThreadId(6) [1P:a.rs:1] msg1";
     let content2 = "INFO  2026-03-05T19:36:07.000+00:00 ThreadId(6) [1P:b.rs:2] msg2";
 
-    let entries1 = LogEntryRef::parse_log_content("/file1", content1, &mut interner);
-    let entries2 = LogEntryRef::parse_log_content("/file2", content2, &mut interner);
+    let entries1 = LogEntryRef::parse_log_content("/file1", content1, &mut cache);
+    let entries2 = LogEntryRef::parse_log_content("/file2", content2, &mut cache);
 
     // Thread Arc is shared across files.
     assert!(Arc::ptr_eq(&entries1[0].thread, &entries2[0].thread));
@@ -439,10 +439,9 @@ fn parse_safari_timestamp_assumed_utc() {
 
 #[test]
 fn parse_safari_ref_info_line() {
-    let mut interner = StringInterner::new();
+    let mut cache = StringCache::new();
     let entry =
-        LogEntryRef::parse_line(&interner.intern("test"), SAMPLE_SAFARI_INFO, &mut interner)
-            .unwrap();
+        LogEntryRef::parse_line(&cache.cached("test"), SAMPLE_SAFARI_INFO, &mut cache).unwrap();
     assert_eq!(entry.level, LogLevel::Info);
     assert_eq!(&*entry.thread, "");
     assert_eq!(entry.source.component, "TrelicaReporting");
