@@ -1,5 +1,7 @@
 //! Log entry filter types: level, source component, and log file.
 
+use std::collections::HashSet;
+
 use diagnostic_parser::{LogEntryRef, log_entry::LogLevel};
 
 // ---------------------------------------------------------------------------
@@ -119,12 +121,12 @@ pub struct SourceFilter<'a> {
 
 impl<'a> SourceFilter<'a> {
     pub fn new(entries: &[LogEntryRef<'a>]) -> Self {
-        let mut components = entries
+        let components_set = entries
             .iter()
             .map(|e| e.source.component)
-            .collect::<Vec<_>>();
+            .collect::<HashSet<_>>();
+        let mut components = Vec::from_iter(components_set);
         components.sort();
-        components.dedup();
         Self {
             available: components,
             selected: None,
@@ -172,12 +174,12 @@ pub struct LogFileFilter<'a> {
 
 impl<'a> LogFileFilter<'a> {
     pub fn new(entries: &'a [LogEntryRef<'a>]) -> Self {
-        let mut log_files = entries
+        let log_files_set = entries
             .iter()
             .map(|e| e.log_file_title.as_ref())
-            .collect::<Vec<_>>();
+            .collect::<HashSet<_>>();
+        let mut log_files = Vec::from_iter(log_files_set);
         log_files.sort();
-        log_files.dedup();
         Self {
             available: log_files,
             selected: None,
