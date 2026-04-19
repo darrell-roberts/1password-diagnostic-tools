@@ -24,7 +24,7 @@ pub mod state;
 // Re-export the most commonly used types so callers can write `app::App`, etc.
 pub use analysis_state::{AnalysisData, AnalysisState};
 pub use crash_state::CrashReportsState;
-use diagnostic_parser::LogEntryRef;
+use diagnostic_parser::LogEntry;
 pub use logs_state::LogsState;
 pub use pane_state::OverviewState;
 pub use state::{InputMode, Tab};
@@ -42,7 +42,7 @@ pub struct App<'a> {
     /// Cached total log line count (computed once at startup).
     pub total_log_lines: usize,
     /// All parsed log entries (immutable after construction).
-    pub all_entries: &'a [LogEntryRef<'a>],
+    pub all_entries: &'a [LogEntry<'a>],
 
     // -- Global UI state --
     /// Currently active tab.
@@ -77,7 +77,7 @@ pub struct App<'a> {
 }
 
 impl<'a> App<'a> {
-    pub fn new(report: &'a DiagnosticReport, all_entries: &'a [LogEntryRef<'a>]) -> Self {
+    pub fn new(report: &'a DiagnosticReport, all_entries: &'a [LogEntry<'a>]) -> Self {
         let total_log_lines = report.total_log_lines();
         let has_crashes = !report.crash_report_entries.is_empty();
 
@@ -109,7 +109,7 @@ impl<'a> App<'a> {
     // -----------------------------------------------------------------------
 
     /// Get the currently selected log entry (if any).
-    pub fn selected_log_entry(&self) -> Option<&LogEntryRef<'_>> {
+    pub fn selected_log_entry(&self) -> Option<&LogEntry<'_>> {
         let selected = self.logs.list_state.selected()?;
         let idx = *self.logs.filtered_indices.get(selected)?;
         self.all_entries.get(idx)
@@ -122,7 +122,7 @@ impl<'a> App<'a> {
     }
 
     /// Find the panic log entry that corresponds to the selected crash report.
-    pub fn selected_crash_panic_entry(&self) -> Option<&LogEntryRef<'_>> {
+    pub fn selected_crash_panic_entry(&self) -> Option<&LogEntry<'_>> {
         let crash = self.selected_crash_report()?;
         crash.find_panic_entry(self.all_entries)
     }

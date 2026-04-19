@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use diagnostic_parser::{LogEntryRef, log_entry::LogLevel};
+use diagnostic_parser::{LogEntry, log_entry::LogLevel};
 
 // ---------------------------------------------------------------------------
 // Log level filter
@@ -120,7 +120,7 @@ pub struct SourceFilter<'a> {
 }
 
 impl<'a> SourceFilter<'a> {
-    pub fn new(entries: &[LogEntryRef<'a>]) -> Self {
+    pub fn new(entries: &[LogEntry<'a>]) -> Self {
         let components_set = entries
             .iter()
             .map(|e| e.source.component)
@@ -133,7 +133,7 @@ impl<'a> SourceFilter<'a> {
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
+    pub fn accepts(&self, entry: &LogEntry<'_>) -> bool {
         match self.selected {
             None => true,
             Some(idx) => entry.source.component == self.available[idx],
@@ -173,7 +173,7 @@ pub struct LogFileFilter<'a> {
 }
 
 impl<'a> LogFileFilter<'a> {
-    pub fn new(entries: &'a [LogEntryRef<'a>]) -> Self {
+    pub fn new(entries: &'a [LogEntry<'a>]) -> Self {
         let log_files_set = entries
             .iter()
             .map(|e| e.log_file_title.as_ref())
@@ -186,7 +186,7 @@ impl<'a> LogFileFilter<'a> {
         }
     }
 
-    pub fn accepts(&self, entry: &LogEntryRef<'_>) -> bool {
+    pub fn accepts(&self, entry: &LogEntry<'_>) -> bool {
         match self.selected {
             None => true,
             Some(idx) => entry.log_file_title.as_ref() == self.available[idx],

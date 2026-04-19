@@ -7,13 +7,13 @@
 //!
 //! For large diagnostic files, use [`DiagnosticReport::parse_log_entries_ref`]
 //! instead of [`DiagnosticReport::parse_log_entries`]. The `_ref` variant
-//! returns [`LogEntryRef`] values that borrow string data directly from the
+//! returns [`LogEntry`] values that borrow string data directly from the
 //! log content already held by the report, avoiding ~33 MB of duplicate
 //! `String` allocations for a typical 36 MB file.
 
 use crate::{
     error::{DiagnosticError, Result},
-    log_entry::{LogEntry, LogEntryLike, LogEntryRef, StringCache},
+    log_entry::{LogEntry, StringCache},
 };
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -111,46 +111,22 @@ impl DiagnosticReport {
         Utc.timestamp_opt(self.created_at, 0).single()
     }
 
-    /// Parse every line inside every [`LogFile`] into structured [`LogEntry`]
-    /// values. Lines that cannot be parsed (e.g. stack-trace continuation
-    /// lines) are attached to the preceding entry's `continuation` field.
-    ///
-    /// The returned entries are in file-order across all log files, each
-    /// tagged with the originating [`LogFile::title`].
-    ///
-    /// This allocates owned `String`s for every field of every entry. For
-    /// large files, prefer [`parse_log_entries_ref`](Self::parse_log_entries_ref)
-    /// which borrows from the log content already in memory.
-    pub fn parse_log_entries(&self) -> Vec<LogEntry> {
-        let mut entries = self
-            .logs
-            .iter()
-            .flat_map(|log_file| LogEntry::parse_log_content(&log_file.title, &log_file.content))
-            .collect::<Vec<_>>();
-        entries.sort_by_key(|e| e.timestamp);
-        entries
-    }
-
     /// Zero-copy version of [`parse_log_entries`](Self::parse_log_entries).
     ///
-    /// Returns [`LogEntryRef`] values that borrow `&str` slices directly
+    /// Returns [`LogEntry`] values that borrow `&str` slices directly
     /// from the [`LogFile::content`] strings already owned by this report.
     /// High-repetition fields (`log_file_title`, `thread`) are shared via
     /// [`Arc<str>`](std::sync::Arc) through a [`StringCache`].
     ///
-    /// For a typical 36 MB diagnostic file with ~127 k log entries this
-    /// eliminates ~638 k `String` allocations (~33 MB of heap), reducing
-    /// peak memory by roughly 30%.
-    ///
     /// The returned entries borrow from `&self`, so the report must outlive
     /// the entries.
-    pub fn parse_log_entries_ref(&self) -> (Vec<LogEntryRef<'_>>, StringCache) {
+    pub fn parse_log_entries_ref(&self) -> (Vec<LogEntry<'_>>, StringCache) {
         let mut cache = StringCache::new();
-        let mut all_entries: Vec<LogEntryRef<'_>> = Vec::new();
+        let mut all_entries: Vec<LogEntry<'_>> = Vec::new();
 
         for log_file in &self.logs {
             let entries =
-                LogEntryRef::parse_log_content(&log_file.title, &log_file.content, &mut cache);
+                LogEntry::parse_log_content(&log_file.title, &log_file.content, &mut cache);
             all_entries.extend(entries);
         }
 
@@ -665,14 +641,9 @@ impl LogFile {
         }
     }
 
-    /// Parse the content of this log file into structured [`LogEntry`] values.
-    pub fn parse_entries(&self) -> Vec<LogEntry> {
-        LogEntry::parse_log_content(&self.title, &self.content)
-    }
-
     /// Zero-copy version of [`parse_entries`](Self::parse_entries).
-    pub fn parse_entries_ref<'a>(&'a self, cache: &mut StringCache) -> Vec<LogEntryRef<'a>> {
-        LogEntryRef::parse_log_content(&self.title, &self.content, cache)
+    pub fn parse_entries_ref<'a>(&'a self, cache: &mut StringCache) -> Vec<LogEntry<'a>> {
+        LogEntry::parse_log_content(&self.title, &self.content, cache)
     }
 
     /// Number of non-empty lines in this log file.
@@ -732,8 +703,7 @@ impl CrashReportEntry {
     }
 
     /// Find the panic log entry that corresponds to this crash report by
-    /// matching timestamps. Works with any type implementing
-    /// [`LogEntryLike`] (both [`LogEntry`] and [`LogEntryRef`]).
+    /// matching timestamps.
     ///
     /// The crash report records a Unix-second timestamp while the panic log
     /// entry has sub-second precision, so we look for the panic entry whose
@@ -741,17 +711,17 @@ impl CrashReportEntry {
     /// `max_drift` tolerance (default: 2 seconds).
     ///
     /// Returns `None` if no panic entry is found within the tolerance.
-    pub fn find_panic_entry<'a, T: LogEntryLike>(&self, entries: &'a [T]) -> Option<&'a T> {
+    pub fn find_panic_entry<'a>(&self, entries: &'a [LogEntry<'a>]) -> Option<&'a LogEntry<'a>> {
         self.find_panic_entry_with_drift(entries, chrono::TimeDelta::seconds(2))
     }
 
     /// Like [`find_panic_entry`](Self::find_panic_entry) but with a custom
     /// maximum drift tolerance.
-    pub fn find_panic_entry_with_drift<'a, T: LogEntryLike>(
+    pub fn find_panic_entry_with_drift<'a>(
         &self,
-        entries: &'a [T],
+        entries: &'a [LogEntry<'a>],
         max_drift: chrono::TimeDelta,
-    ) -> Option<&'a T> {
+    ) -> Option<&'a LogEntry<'a>> {
         let crash_ts = self.timestamp_utc()?;
 
         entries

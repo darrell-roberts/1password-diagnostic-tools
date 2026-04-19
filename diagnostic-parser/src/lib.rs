@@ -29,7 +29,7 @@
 //!
 //! let report = DiagnosticReport::from_file("path/to/file.1pdiagnostics").unwrap();
 //!
-//! // Returns borrowed `LogEntryRef` values that point into the report's
+//! // Returns borrowed `LogEntry` values that point into the report's
 //! // existing log content — no extra String allocations.
 //! let (entries, _cache) = report.parse_log_entries_ref();
 //!
@@ -43,9 +43,7 @@ pub mod log_entry;
 pub mod model;
 
 pub use error::DiagnosticError;
-pub use log_entry::{
-    LogEntry, LogEntryLike, LogEntryRef, LogLevel, LogSource, LogSourceRef, StringCache,
-};
+pub use log_entry::{LogEntry, LogLevel, LogSource, LogSourceRef, StringCache};
 pub use model::{
     Account, AccountState, AccountType, BillingStatus, CrashReportEntry, DiagnosticReport, Feature,
     LogFile, Overview, System, Vault, VaultItems, VaultType,

@@ -6,7 +6,7 @@
 
 use super::pane_state::ScrollablePaneState;
 use chrono::{DateTime, FixedOffset, TimeDelta};
-use diagnostic_parser::{LogEntryRef, log_entry::LogLevel, model::CrashReportEntry};
+use diagnostic_parser::{LogEntry, log_entry::LogLevel, model::CrashReportEntry};
 use regex::Regex;
 use std::{borrow::Cow, collections::HashMap, sync::LazyLock};
 
@@ -121,7 +121,7 @@ pub struct TimeLine {
 
 impl<'a> AnalysisData<'a> {
     /// Compute all analytics from parsed log entries and crash reports.
-    pub fn analyze(entries: &'a [LogEntryRef<'a>], crashes: &'a [CrashReportEntry]) -> Self {
+    pub fn analyze(entries: &'a [LogEntry<'a>], crashes: &'a [CrashReportEntry]) -> Self {
         let total_entries = entries.len();
 
         // -- Level counts & component stats (single pass) --
@@ -242,7 +242,7 @@ impl<'a> AnalysisData<'a> {
 // Timeline computation
 // ---------------------------------------------------------------------------
 
-fn compute_timeline(entries: &[LogEntryRef<'_>]) -> TimeLine {
+fn compute_timeline(entries: &[LogEntry<'_>]) -> TimeLine {
     if entries.is_empty() {
         return TimeLine::default();
     }
@@ -344,7 +344,7 @@ fn detect_bursts(buckets: &[TimeBucket]) -> Vec<BurstInfo> {
 fn detect_gaps(
     buckets: &[TimeBucket],
     bucket_delta: TimeDelta,
-    entries: &[LogEntryRef<'_>],
+    entries: &[LogEntry<'_>],
     first_ts: DateTime<FixedOffset>,
     bucket_secs: i64,
 ) -> Vec<GapInfo> {
