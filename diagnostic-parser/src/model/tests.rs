@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    AccountState, AccountType, BillingStatus, DiagnosticReport, LogFile, LogFileCategory, VaultType,
+};
+use std::str::FromStr as _;
 
 fn minimal_json() -> &'static str {
     r#"{
