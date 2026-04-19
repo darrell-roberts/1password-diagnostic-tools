@@ -18,7 +18,7 @@ use crate::{
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
-use std::{fmt, fs::File, ops::Not as _, path::Path, str::FromStr};
+use std::{fmt, fs::File, ops::Not as _, path::Path};
 
 /// Deserialize a Unix timestamp that may be either an integer or a
 /// floating-point number, truncating any fractional seconds to produce an `i64`.
@@ -82,7 +82,8 @@ pub struct DiagnosticReport {
     pub crash_report_entries: Vec<CrashReportEntry>,
 }
 
-impl FromStr for DiagnosticReport {
+#[cfg(test)]
+impl std::str::FromStr for DiagnosticReport {
     type Err = DiagnosticError;
 
     fn from_str(json: &str) -> std::result::Result<Self, Self::Err> {
