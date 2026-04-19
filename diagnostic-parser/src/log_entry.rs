@@ -26,14 +26,14 @@
 //!   Simple to use, easy to store, but allocates ~5 `String`s per log line.
 //!   For 127 k entries that's ~638 k allocations and ~33 MB of heap.
 //!
-//! - [`LogEntryRef<'a>`] — Zero-copy. String fields borrow `&'a str` slices
+//! - [`LogEntry<'a>`] — Zero-copy. String fields borrow `&'a str` slices
 //!   directly from the log content that is already in memory, and high-
 //!   repetition fields (`log_file_title`, `thread`) are shared via
-//!   [`Arc<str>`]. Parsing into `LogEntryRef` performs **zero heap
+//!   [`Arc<str>`]. Parsing into `LogEntry` performs **zero heap
 //!   allocations** for the common case (no continuation lines). Continuation
 //!   lines are stored as `&'a str` slices as well.
 //!
-//! A `LogEntryRef` can be promoted to a `LogEntry` via [`LogEntryRef::to_owned`]
+//! A `LogEntry` can be promoted to a `LogEntry` via [`LogEntry::to_owned`]
 //! when you need to store it beyond the lifetime of the backing data.
 use chrono::{DateTime, FixedOffset};
 use std::{borrow::Cow, collections::HashSet, fmt, sync::Arc};
@@ -83,39 +83,6 @@ impl fmt::Display for LogLevel {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Shared trait for panic matching
-// ---------------------------------------------------------------------------
-
-/// Common interface for log entry types, enabling generic panic-matching
-/// in [`CrashReportEntry`](crate::model::CrashReportEntry).
-pub trait LogEntryLike {
-    fn is_panic(&self) -> bool;
-    fn timestamp_utc(&self) -> DateTime<chrono::Utc>;
-}
-
-impl LogEntryLike for LogEntry {
-    fn is_panic(&self) -> bool {
-        self.is_panic()
-    }
-    fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
-        self.timestamp_utc()
-    }
-}
-
-impl LogEntryLike for LogEntryRef<'_> {
-    fn is_panic(&self) -> bool {
-        self.is_panic()
-    }
-    fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
-        self.timestamp_utc()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Log source (owned)
-// ---------------------------------------------------------------------------
-
 /// The bracketed source location / component tag on a log line.
 ///
 /// The raw text inside the brackets (e.g. `1P:op-settings/src/store/json_store.rs:75`)
@@ -137,20 +104,6 @@ pub struct LogSource {
 }
 
 impl LogSource {
-    /// Parse the content between `[` and `]`.
-    fn parse(raw: &str) -> Self {
-        match raw.split_once(':') {
-            Some((component, rest)) => Self {
-                component: component.to_owned(),
-                detail: Some(rest.to_owned()),
-            },
-            None => Self {
-                component: raw.to_owned(),
-                detail: None,
-            },
-        }
-    }
-
     /// The raw source string reconstructed from its parts.
     pub fn raw(&self) -> Cow<'_, str> {
         match &self.detail {
@@ -270,125 +223,6 @@ fn extract_line_number(detail: &str) -> Option<u32> {
     detail[colon_pos + 1..].parse().ok()
 }
 
-// ---------------------------------------------------------------------------
-// Log entry (owned)
-// ---------------------------------------------------------------------------
-
-/// A single structured log entry parsed from the text content of a log file.
-///
-/// All string fields are fully owned. This is convenient for storing entries
-/// in collections that outlive the source data, but costs ~5 heap allocations
-/// per entry. For a lower-allocation alternative see [`LogEntryRef`].
-#[derive(Debug, Clone)]
-pub struct LogEntry {
-    /// The title of the [`LogFile`](crate::model::LogFile) this entry came from.
-    pub log_file_title: String,
-
-    /// Severity level.
-    pub level: LogLevel,
-
-    /// Timestamp with timezone offset as written in the log line.
-    pub timestamp: DateTime<FixedOffset>,
-
-    /// Thread identifier string, e.g. `"ThreadId(6)"` or `"runtime-worker(ThreadId(3))"`.
-    pub thread: String,
-
-    /// Parsed source / component tag from the brackets.
-    pub source: LogSource,
-
-    /// The log message text (everything after the `]`).
-    pub message: String,
-
-    /// Any continuation lines that immediately followed this entry
-    /// (e.g. stack trace frames). Each element is one raw line.
-    pub continuation: Vec<String>,
-}
-
-impl LogEntry {
-    /// Parse all log lines from a single log file's content, associating
-    /// continuation lines with their parent entry.
-    ///
-    /// `log_file_title` is stored on every returned entry so callers can
-    /// trace entries back to their originating file.
-    pub fn parse_log_content(log_file_title: &str, content: &str) -> Vec<Self> {
-        parse_log_lines(
-            content,
-            |line| Self::parse_line(log_file_title, line),
-            |entry, line| entry.continuation.push(line.to_owned()),
-        )
-    }
-
-    /// Attempt to parse a single log line into a [`LogEntry`].
-    ///
-    /// Returns `None` if the line does not start with a recognized log level
-    /// keyword (i.e. it is a continuation line).
-    fn parse_line(log_file_title: &str, line: &str) -> Option<Self> {
-        let line_parts = parse_line_fields(line)?;
-        let source = LogSource::parse(line_parts.source_raw);
-
-        Some(Self {
-            log_file_title: log_file_title.to_owned(),
-            level: line_parts.level,
-            timestamp: line_parts.timestamp,
-            thread: line_parts.thread.to_owned(),
-            source,
-            message: line_parts.message.to_owned(),
-            continuation: Vec::new(),
-        })
-    }
-
-    /// Returns `true` if this entry has associated continuation lines
-    /// (typically a stack trace).
-    pub fn has_continuation(&self) -> bool {
-        !self.continuation.is_empty()
-    }
-
-    /// Returns `true` if this log entry records a panic (i.e. its message
-    /// contains `"panicked at"`). Panic entries typically originate from the
-    /// `op-crash-reporting` crate and carry a stack trace in their
-    /// [`continuation`](Self::continuation) lines.
-    pub fn is_panic(&self) -> bool {
-        self.level == LogLevel::Error && self.message.contains("panicked at")
-    }
-
-    /// The full message including any continuation lines, joined by newlines.
-    pub fn full_message(&self) -> String {
-        if self.continuation.is_empty() {
-            self.message.clone()
-        } else {
-            let mut buf = self.message.clone();
-            for line in &self.continuation {
-                buf.push('\n');
-                buf.push_str(line);
-            }
-            buf
-        }
-    }
-
-    /// The timestamp converted to UTC.
-    pub fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
-        self.timestamp.to_utc()
-    }
-}
-
-impl fmt::Display for LogEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{:<5} {} {} {} {}",
-            self.level, self.timestamp, self.thread, self.source, self.message
-        )?;
-        for cont in &self.continuation {
-            write!(f, "\n{cont}")?;
-        }
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Log entry (zero-copy / borrowed)
-// ---------------------------------------------------------------------------
-
 /// A zero-copy structured log entry that borrows string data from the
 /// original log content.
 ///
@@ -397,11 +231,11 @@ impl fmt::Display for LogEntry {
 /// sharing — there are typically only a handful of distinct values
 /// repeated across thousands of entries.
 ///
-/// For the common case (no continuation lines) parsing a `LogEntryRef`
+/// For the common case (no continuation lines) parsing a `LogEntry`
 /// performs **zero heap allocations** beyond the `Arc` lookups in the
 /// cache set (which are shared across all entries).
 #[derive(Debug, Clone)]
-pub struct LogEntryRef<'a> {
+pub struct LogEntry<'a> {
     /// The title of the log file this entry came from (shared via `Arc`).
     pub log_file_title: Arc<str>,
 
@@ -427,7 +261,7 @@ pub struct LogEntryRef<'a> {
     pub continuation: Vec<&'a str>,
 }
 
-impl<'a> LogEntryRef<'a> {
+impl<'a> LogEntry<'a> {
     /// Parse all log lines from a single log file's content into zero-copy
     /// entries. Uses [`Arc<str>`] cache to deduplicate `log_file_title` and `thread`
     /// strings via [`Arc<str>`].
@@ -448,7 +282,7 @@ impl<'a> LogEntryRef<'a> {
         )
     }
 
-    /// Attempt to parse a single log line into a zero-copy [`LogEntryRef`].
+    /// Attempt to parse a single log line into a zero-copy [`LogEntry`].
     fn parse_line(
         log_file_title: &Arc<str>,
         line: &'a str,
@@ -480,6 +314,7 @@ impl<'a> LogEntryRef<'a> {
     }
 
     /// The full message including any continuation lines, joined by newlines.
+    #[cfg(test)]
     pub fn full_message(&self) -> String {
         if self.continuation.is_empty() {
             self.message.to_owned()
@@ -500,23 +335,9 @@ impl<'a> LogEntryRef<'a> {
     pub fn timestamp_utc(&self) -> DateTime<chrono::Utc> {
         self.timestamp.to_utc()
     }
-
-    /// Convert to a fully owned [`LogEntry`], allocating new `String`s for
-    /// every field.
-    pub fn to_owned(&self) -> LogEntry {
-        LogEntry {
-            log_file_title: self.log_file_title.to_string(),
-            level: self.level,
-            timestamp: self.timestamp,
-            thread: self.thread.to_string(),
-            source: self.source.to_owned(),
-            message: self.message.to_owned(),
-            continuation: self.continuation.iter().map(|s| s.to_string()).collect(),
-        }
-    }
 }
 
-impl fmt::Display for LogEntryRef<'_> {
+impl fmt::Display for LogEntry<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -612,11 +433,10 @@ struct LogLineFields<'a> {
     message: &'a str,
 }
 
-/// Core line parser shared by both [`LogEntry`] and [`LogEntryRef`].
+/// Core line parser shared by both [`LogEntry`] and [`LogEntry`].
 ///
 /// Parses a single log line and returns the extracted fields as borrowed
-/// slices. The caller decides whether to clone them into `String`s or keep
-/// them as `&str`.
+/// slices.
 ///
 /// Returns `None` if the line is not a structured log line (e.g. a
 /// continuation / stack-trace line).

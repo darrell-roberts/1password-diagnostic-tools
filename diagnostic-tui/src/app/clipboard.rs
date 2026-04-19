@@ -10,13 +10,13 @@ use crate::{
     format_bytes,
 };
 use chrono::Local;
-use diagnostic_parser::{LogEntryRef, log_entry::LogLevel, model::CrashReportEntry};
+use diagnostic_parser::{LogEntry, log_entry::LogLevel, model::CrashReportEntry};
 use std::time::Instant;
 
 /// Build plain-text lines for a single crash report and its linked panic entry.
 fn crash_report_plain_lines(
     crash: &CrashReportEntry,
-    panic_entry: Option<&LogEntryRef<'_>>,
+    panic_entry: Option<&LogEntry<'_>>,
 ) -> Vec<String> {
     let ts = crash
         .timestamp_utc()
