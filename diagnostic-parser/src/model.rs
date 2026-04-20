@@ -16,9 +16,10 @@ use crate::{
     log_entry::{LogEntry, StringCache},
 };
 use chrono::{DateTime, TimeZone, Utc};
+use memmap2::MmapOptions;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
-use std::{fmt, fs, ops::Not as _, path::Path};
+use std::{fmt, fs::File, ops::Not as _, path::Path};
 
 /// Deserialize a Unix timestamp that may be either an integer or a
 /// floating-point number, truncating any fractional seconds to produce an `i64`.
@@ -95,16 +96,23 @@ impl DiagnosticReport {
     /// Read and parse a `.1pdiagnostics` file from disk.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let data = fs::read(path).map_err(|source| DiagnosticError::Io {
+        let file = File::open(path).map_err(|source| DiagnosticError::Io {
             path: path.to_path_buf(),
             source,
         })?;
-        Self::from_bytes(&data)
-    }
 
-    /// Parse a diagnostic report from a byte slice.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        serde_json::from_slice(bytes).map_err(Into::into)
+        // SAFETY: the mapping is scoped to this function. If another process
+        // truncates or rewrites the file while mapped, reads of affected
+        // pages can SIGBUS or yield torn bytes.This is only held for the time we
+        // deserialize the file.
+        let mmap = unsafe { MmapOptions::new().populate().map(&file) }.map_err(|source| {
+            DiagnosticError::Io {
+                path: path.to_path_buf(),
+                source,
+            }
+        })?;
+
+        serde_json::from_slice(&mmap).map_err(Into::into)
     }
 
     /// The report creation time as a [`DateTime<Utc>`].
