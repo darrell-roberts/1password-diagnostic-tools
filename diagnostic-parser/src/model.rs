@@ -129,7 +129,7 @@ impl DiagnosticReport {
     ///
     /// The returned entries borrow from `&self`, so the report must outlive
     /// the entries.
-    pub fn parse_log_entries_ref(&self) -> (Vec<LogEntry<'_>>, StringCache) {
+    pub fn parse_log_entries(&self) -> (Vec<LogEntry<'_>>, StringCache) {
         let mut cache = StringCache::new();
         let mut all_entries: Vec<LogEntry<'_>> = Vec::new();
 
