@@ -31,7 +31,7 @@
 //!
 //! // Returns borrowed `LogEntry` values that point into the report's
 //! // existing log content — no extra String allocations.
-//! let (entries, _cache) = report.parse_log_entries_ref();
+//! let (entries, _cache) = report.parse_log_entries();
 //!
 //! for entry in &entries {
 //!     println!("{} [{}] {}", entry.timestamp, entry.source, entry.message);

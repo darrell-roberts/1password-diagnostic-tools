@@ -118,7 +118,7 @@ fn log_file_category() {
 }
 
 #[test]
-fn parse_log_entries_ref() {
+fn parse_log_entries() {
     let report = DiagnosticReport::from_str(minimal_json()).unwrap();
     let (entries, cache) = report.parse_log_entries();
     assert_eq!(entries.len(), 2);
