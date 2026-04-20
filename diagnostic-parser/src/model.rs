@@ -5,7 +5,7 @@
 //!
 //! # Memory-efficient parsing
 //!
-//! For large diagnostic files, use [`DiagnosticReport::parse_log_entries_ref`]
+//! For large diagnostic files, use [`DiagnosticReport::parse_log_entries`]
 //! instead of [`DiagnosticReport::parse_log_entries`]. The `_ref` variant
 //! returns [`LogEntry`] values that borrow string data directly from the
 //! log content already held by the report, avoiding ~33 MB of duplicate

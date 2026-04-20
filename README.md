@@ -12,7 +12,7 @@ A library (and small demo binary) for parsing `.1pdiagnostics` files. A `.1pdiag
 
 - Strongly-typed model covering system info, accounts, vaults, log files, and crash reports.
 - Structured log-entry parser with level, source, thread, timestamp, and continuation/stack-trace extraction.
-- Zero-copy parsing path (`parse_log_entries_ref`) with string caching for memory-efficient processing of large diagnostic files.
+- Zero-copy parsing path (`parse_log_entries`) with string caching for memory-efficient processing of large diagnostic files.
 
 ### diagnostic-tui
 
