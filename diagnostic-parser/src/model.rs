@@ -18,7 +18,7 @@ use crate::{
 use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
-use std::{fmt, fs::File, ops::Not as _, path::Path};
+use std::{fmt, fs, ops::Not as _, path::Path};
 
 /// Deserialize a Unix timestamp that may be either an integer or a
 /// floating-point number, truncating any fractional seconds to produce an `i64`.
@@ -95,11 +95,11 @@ impl DiagnosticReport {
     /// Read and parse a `.1pdiagnostics` file from disk.
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        let file = File::open(path).map_err(|source| DiagnosticError::Io {
+        let data = fs::read(path).map_err(|source| DiagnosticError::Io {
             path: path.to_path_buf(),
             source,
         })?;
-        serde_json::from_reader(file).map_err(Into::into)
+        Self::from_bytes(&data)
     }
 
     /// Parse a diagnostic report from a byte slice.
