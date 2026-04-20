@@ -120,7 +120,7 @@ fn log_file_category() {
 #[test]
 fn parse_log_entries_ref() {
     let report = DiagnosticReport::from_str(minimal_json()).unwrap();
-    let (entries, cache) = report.parse_log_entries_ref();
+    let (entries, cache) = report.parse_log_entries();
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].level, crate::LogLevel::Info);
     assert_eq!(entries[1].level, crate::LogLevel::Warn);

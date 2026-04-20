@@ -48,7 +48,7 @@ fn run_tui(report: DiagnosticReport) -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let (log_entries, _) = report.parse_log_entries_ref();
+    let (log_entries, _) = report.parse_log_entries();
 
     let mut app = App::new(&report, &log_entries);
 

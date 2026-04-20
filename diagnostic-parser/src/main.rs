@@ -66,7 +66,7 @@ fn main() {
     println!();
 
     // ── Parsed log entries (zero-copy) ───────────────────────────────
-    let (entries, cache) = report.parse_log_entries_ref();
+    let (entries, cache) = report.parse_log_entries();
     let mut by_level: HashMap<LogLevel, usize> = HashMap::new();
     let mut with_stack_trace = 0usize;
     for entry in &entries {
