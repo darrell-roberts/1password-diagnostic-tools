@@ -75,15 +75,15 @@ fn crash_report_plain_lines(
 
 impl App<'_> {
     /// Copy the selected log entries to the system clipboard.
-    pub(super) fn copy_selection(&mut self) {
+    pub(super) fn copy_log_selection(&mut self) {
         let Some((start, end)) = self.logs.selection_range() else {
             return;
         };
 
         let count = end - start + 1;
         let text = (start..=end)
-            .filter_map(|i| self.logs.filtered_indices.get(i).copied())
-            .filter_map(|idx| self.all_entries.get(idx))
+            .filter_map(|index| self.logs.filtered_indices.get(index).copied())
+            .filter_map(|index| self.all_entries.get(index))
             .map(|entry| {
                 let mut line = format!(
                     "{} {} [{}] {}",
@@ -92,10 +92,7 @@ impl App<'_> {
                     entry.source.raw(),
                     entry.message,
                 );
-                for cont in &entry.continuation {
-                    line.push('\n');
-                    line.push_str(cont);
-                }
+                line.extend(entry.continuation.iter().flat_map(|cont| ["\n", cont]));
                 line
             })
             .collect::<Vec<_>>()
@@ -188,13 +185,13 @@ impl App<'_> {
             Some(range) => range,
             None => {
                 // Single entry copy when no visual selection is active.
-                let idx = self.crashes.list_state.selected().unwrap_or_default();
-                (idx, idx)
+                let index = self.crashes.list_state.selected().unwrap_or_default();
+                (index, index)
             }
         };
 
-        let text: String = (start..=end)
-            .filter_map(|i| self.report.crash_report_entries.get(i))
+        let text = (start..=end)
+            .filter_map(|index| self.report.crash_report_entries.get(index))
             .map(|crash| {
                 let panic = crash.find_panic_entry(self.all_entries);
                 crash_report_plain_lines(crash, panic).join("\n")
@@ -228,7 +225,7 @@ impl App<'_> {
             .unwrap_or_else(|| self.build_crash_detail_plain_lines());
         let clamped_end = end.min(lines.len().saturating_sub(1));
         let count = clamped_end - start + 1;
-        let text: String = lines[start..=clamped_end].join("\n");
+        let text = lines[start..=clamped_end].join("\n");
 
         if let Some(ref mut cb) = self.clipboard
             && cb.set_text(text).is_ok()
@@ -424,14 +421,14 @@ impl App<'_> {
         // Level breakdown
         let mut level_counts = [0; 5];
         for entry in self.all_entries {
-            let idx = match entry.level {
+            let index = match entry.level {
                 LogLevel::Error => 0,
                 LogLevel::Warn => 1,
                 LogLevel::Info => 2,
                 LogLevel::Debug => 3,
                 LogLevel::Trace => 4,
             };
-            level_counts[idx] += 1;
+            level_counts[index] += 1;
         }
         lines.extend(
             ["ERROR", "WARN", "INFO", "DEBUG", "TRACE"]
