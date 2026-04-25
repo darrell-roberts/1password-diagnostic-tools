@@ -1,5 +1,4 @@
 //! State for the Crash Reports tab.
-
 use super::navigation::ensure_cursor_visible;
 use ratatui::widgets::TableState;
 
