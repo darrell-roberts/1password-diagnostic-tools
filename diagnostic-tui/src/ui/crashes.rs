@@ -1,5 +1,4 @@
 //! Rendering logic for the Crash Reports tab: crash list and crash detail pane.
-
 use crate::{
     app::{CrashReportsState, Tab},
     ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG},
@@ -70,10 +69,6 @@ impl StatefulWidget for CrashReportsWidget<'_> {
         );
     }
 }
-
-// ---------------------------------------------------------------------------
-// Crash list
-// ---------------------------------------------------------------------------
 
 fn render_crash_list(
     state: &mut CrashReportsState,
@@ -185,10 +180,6 @@ fn render_crash_list(
 
     StatefulWidget::render(list, area, buf, &mut state.list_state);
 }
-
-// ---------------------------------------------------------------------------
-// Crash detail pane
-// ---------------------------------------------------------------------------
 
 fn render_crash_detail(
     state: &mut CrashReportsState,
@@ -448,10 +439,7 @@ fn render_crash_detail(
         .render(area, buf);
 }
 
-// ---------------------------------------------------------------------------
-// Plain-text builder (used for cache during render)
-// ---------------------------------------------------------------------------
-
+/// Plain-text builder (used for cache during render)
 fn crash_report_plain_lines(
     crash: &CrashReportEntry,
     panic_entry: Option<&LogEntry<'_>>,

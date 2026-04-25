@@ -2,7 +2,6 @@
 //!
 //! These methods live in their own module to keep the main `App` impl focused
 //! on construction and high-level dispatch.
-
 use super::{
     App,
     state::{ContainerStateExt, Tab},
@@ -20,10 +19,6 @@ pub(crate) fn ensure_cursor_visible(cursor: usize, scroll: &mut u16, viewport_h:
 }
 
 impl App<'_> {
-    // -----------------------------------------------------------------------
-    // Directional navigation (up / down / page-up / page-down / home / end)
-    // -----------------------------------------------------------------------
-
     pub(crate) fn navigate_up(&mut self) {
         match self.tab {
             Tab::Overview => {
@@ -276,10 +271,8 @@ impl App<'_> {
         }
     }
 
-    // -----------------------------------------------------------------------
     // z-commands: scroll the viewport so the cursor line is at the center,
     // top, or bottom of the visible area — matching vi's zz / zt / zb.
-    // -----------------------------------------------------------------------
 
     /// Scroll viewport so the current cursor line is centered (`zz`).
     pub(crate) fn scroll_cursor_center(&mut self) {
@@ -380,11 +373,9 @@ impl App<'_> {
         }
     }
 
-    // -----------------------------------------------------------------------
     // Mouse scroll
-    // -----------------------------------------------------------------------
 
-    /// Handle mouse scroll-up events.
+    /// Handle mouse scroll up events.
     pub fn handle_scroll_up(&mut self) {
         // Dismiss help overlay on any scroll.
         if self.show_help {
@@ -414,7 +405,7 @@ impl App<'_> {
         }
     }
 
-    /// Handle mouse scroll-down events.
+    /// Handle mouse scroll down events.
     pub fn handle_scroll_down(&mut self) {
         // Dismiss help overlay on any scroll.
         if self.show_help {
@@ -445,10 +436,6 @@ impl App<'_> {
             self.navigate_down();
         }
     }
-
-    // -----------------------------------------------------------------------
-    // Tab navigation guard
-    // -----------------------------------------------------------------------
 
     pub(crate) fn tab_nav_keys(&self) -> bool {
         true

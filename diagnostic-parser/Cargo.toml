@@ -1,13 +1,13 @@
 [package]
+description = "Parser library for 1Password .1pdiagnostics files"
+edition = "2024"
+license = "MIT"
 name = "diagnostic-parser"
 version = "0.1.0"
-edition = "2024"
-description = "Parser library for 1Password .1pdiagnostics files"
-license = "MIT"
 
 [dependencies]
 chrono = { workspace = true }
+memmap2 = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-memmap2 = "0.9"

@@ -2,9 +2,8 @@
 //!
 //! This module contains all methods on [`App`] that deal with copying
 //! selected content to the system clipboard, as well as helpers that
-//! build plain-text representations of the overview, log detail, and
+//! build plain text representations of the overview, log detail, and
 //! crash report panes.
-
 use crate::{
     app::{App, state::InputMode},
     format_bytes,
@@ -75,10 +74,6 @@ fn crash_report_plain_lines(
 }
 
 impl App<'_> {
-    // -----------------------------------------------------------------------
-    // Copy: log list
-    // -----------------------------------------------------------------------
-
     /// Copy the selected log entries to the system clipboard.
     pub(super) fn copy_selection(&mut self) {
         let Some((start, end)) = self.logs.selection_range() else {
@@ -117,10 +112,6 @@ impl App<'_> {
         self.logs.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
-
-    // -----------------------------------------------------------------------
-    // Copy: log detail pane
-    // -----------------------------------------------------------------------
 
     /// Copy the selected detail lines to the system clipboard.
     pub(super) fn copy_detail_selection(&mut self) {
@@ -191,16 +182,12 @@ impl App<'_> {
         lines
     }
 
-    // -----------------------------------------------------------------------
-    // Copy: crash reports
-    // -----------------------------------------------------------------------
-
     /// Copy the selected crash reports to the system clipboard.
     pub(super) fn copy_crash_selection(&mut self) {
         let (start, end) = match self.crashes.selection_range() {
             Some(range) => range,
             None => {
-                // Single-entry copy when no visual selection is active.
+                // Single entry copy when no visual selection is active.
                 let idx = self.crashes.list_state.selected().unwrap_or_default();
                 (idx, idx)
             }
@@ -227,10 +214,6 @@ impl App<'_> {
         self.crashes.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
-
-    // -----------------------------------------------------------------------
-    // Copy: crash detail pane
-    // -----------------------------------------------------------------------
 
     /// Copy the selected crash detail lines to the system clipboard.
     pub(super) fn copy_crash_detail_selection(&mut self) {
@@ -259,7 +242,7 @@ impl App<'_> {
         self.input_mode = InputMode::Normal;
     }
 
-    /// Build the plain-text lines shown in the crash detail pane for the
+    /// Build the plain text lines shown in the crash detail pane for the
     /// currently selected crash report. Returns an empty vec when nothing is selected.
     pub fn build_crash_detail_plain_lines(&self) -> Vec<String> {
         let Some(crash) = self.selected_crash_report() else {
@@ -267,10 +250,6 @@ impl App<'_> {
         };
         crash_report_plain_lines(crash, self.selected_crash_panic_entry())
     }
-
-    // -----------------------------------------------------------------------
-    // Copy: overview
-    // -----------------------------------------------------------------------
 
     /// Copy the selected overview lines to the system clipboard.
     pub(super) fn copy_overview_selection(&mut self) {
@@ -292,10 +271,6 @@ impl App<'_> {
         self.overview.select_anchor = None;
         self.input_mode = InputMode::Normal;
     }
-
-    // -----------------------------------------------------------------------
-    // Copy: analysis
-    // -----------------------------------------------------------------------
 
     /// Copy the selected analysis lines to the system clipboard.
     pub(super) fn copy_analysis_selection(&mut self) {
@@ -320,7 +295,7 @@ impl App<'_> {
         self.input_mode = InputMode::Normal;
     }
 
-    /// Build plain-text representation of overview lines in the given range.
+    /// Build plain text representation of overview lines in the given range.
     pub fn build_overview_plain_text(&self, start: usize, end: usize) -> String {
         let lines = self.build_overview_text_lines();
         lines[start..=end.min(lines.len().saturating_sub(1))]
@@ -328,7 +303,7 @@ impl App<'_> {
             .join("\n")
     }
 
-    /// Build the overview content as plain-text lines (mirrors the styled lines
+    /// Build the overview content as plain text lines (mirrors the styled lines
     /// produced by `draw_overview` in `ui`).
     pub fn build_overview_text_lines(&self) -> Vec<String> {
         let report = &self.report;

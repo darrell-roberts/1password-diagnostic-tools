@@ -1,5 +1,4 @@
 //! State for the Logs tab.
-
 use super::{
     filters::{LevelFilter, LogFileFilter, SourceFilter},
     navigation::ensure_cursor_visible,
@@ -103,9 +102,7 @@ impl<'a> LogsState<'a> {
         }
     }
 
-    // -----------------------------------------------------------------------
     // Selection ranges
-    // -----------------------------------------------------------------------
 
     /// Ordered `(start, end)` selection range for the log list.
     pub fn selection_range(&self) -> Option<(usize, usize)> {
@@ -132,9 +129,7 @@ impl<'a> LogsState<'a> {
         );
     }
 
-    // -----------------------------------------------------------------------
     // Filtering
-    // -----------------------------------------------------------------------
 
     /// Recompute `filtered_indices` based on current filters.
     pub fn refilter(&mut self, all_entries: &[LogEntry<'_>]) {
@@ -217,7 +212,7 @@ impl<'a> LogsState<'a> {
     }
 
     /// Move the cursor to the nearest matching entry at or after the current
-    /// position. Used for live search-as-you-type.
+    /// position. Used for live search as you type.
     pub fn find_nearest(&mut self, all_entries: &[LogEntry<'_>]) {
         if self.search_query.is_empty() || self.filtered_indices.is_empty() {
             return;
@@ -251,9 +246,7 @@ impl<'a> LogsState<'a> {
     }
 }
 
-// -----------------------------------------------------------------------
 // Search navigation
-// -----------------------------------------------------------------------
 
 fn contains_case_insensitive(target: &str, search: &str) -> bool {
     // search is already lowercased once by the caller.
@@ -265,7 +258,7 @@ fn contains_case_insensitive(target: &str, search: &str) -> bool {
 }
 
 /// Returns `true` if the entry at `all_entries[idx]` matches the current
-/// search query (case-insensitive substring in message or continuation).
+/// search query (case insensitive substring in message or continuation).
 fn entry_matches_query(all_entries: &[LogEntry<'_>], idx: usize, query_lower: &str) -> bool {
     if query_lower.is_empty() {
         return false;

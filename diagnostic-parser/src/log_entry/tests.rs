@@ -22,7 +22,7 @@ fn log_level_display() {
     assert_eq!(LogLevel::Error.to_string(), "ERROR");
 }
 
-// ── Zero-copy LogEntry tests ──────────────────────────────────
+// ── LogEntry tests ──────────────────────────────────
 
 #[test]
 fn ref_parse_info_line() {

@@ -13,9 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState as RatatuiListState, Paragraph},
 };
 
-// ---------------------------------------------------------------------------
 // Source picker
-// ---------------------------------------------------------------------------
 
 /// Draw the source component picker popup centered on the screen.
 pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -100,9 +98,7 @@ pub fn draw_source_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 
-// ---------------------------------------------------------------------------
 // Log file picker
-// ---------------------------------------------------------------------------
 
 /// Draw the log file picker popup centered on the screen.
 pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
@@ -187,9 +183,7 @@ pub fn draw_log_file_picker(frame: &mut Frame, app: &mut App, area: Rect) {
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 
-// ---------------------------------------------------------------------------
 // Help overlay
-// ---------------------------------------------------------------------------
 
 /// Draw the full-screen help overlay listing all keyboard shortcuts.
 pub fn draw_help_overlay(frame: &mut Frame, area: Rect) {

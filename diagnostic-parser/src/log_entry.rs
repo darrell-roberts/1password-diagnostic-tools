@@ -38,6 +38,9 @@
 use chrono::{DateTime, FixedOffset};
 use std::{borrow::Cow, collections::HashSet, fmt, sync::Arc};
 
+#[cfg(test)]
+mod tests;
+
 // ---------------------------------------------------------------------------
 // Log level
 // ---------------------------------------------------------------------------
@@ -138,10 +141,10 @@ impl fmt::Display for LogSource {
 }
 
 // ---------------------------------------------------------------------------
-// Log source (borrowed)
+// Log source
 // ---------------------------------------------------------------------------
 
-/// Zero-copy version of [`LogSource`]. Borrows slices from the original log line.
+/// String slices from the original log line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LogSourceRef<'a> {
     /// The component prefix, e.g. `"1P"`, `"client"`, `"status"`.
@@ -201,10 +204,6 @@ impl fmt::Display for LogSourceRef<'_> {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Shared helpers for LogSource / LogSourceRef
-// ---------------------------------------------------------------------------
 
 /// Extract the file path portion from a detail string like `"crate/path/file.rs:42"`.
 fn extract_file_path(detail: &str) -> Option<&str> {
@@ -275,11 +274,18 @@ impl<'a> LogEntry<'a> {
         cache: &mut StringCache,
     ) -> Vec<Self> {
         let title_arc = cache.cached(log_file_title);
-        parse_log_lines(
-            content,
-            |line| Self::parse_line(&title_arc, line, cache),
-            |entry, line| entry.continuation.push(line),
-        )
+        let mut entries = Vec::with_capacity(content.lines().count());
+        for line in content.lines().filter(|line| !line.trim_start().is_empty()) {
+            match Self::parse_line(&title_arc, line, cache) {
+                Some(entry) => entries.push(entry),
+                None => {
+                    if let Some(last) = entries.last_mut() {
+                        last.continuation.push(line);
+                    }
+                }
+            }
+        }
+        entries
     }
 
     /// Attempt to parse a single log line into a zero-copy [`LogEntry`].
@@ -351,10 +357,6 @@ impl fmt::Display for LogEntry<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// String Cache
-// ---------------------------------------------------------------------------
-
 /// A simple string cache backed by a [`HashMap`]. Converts `&str` values
 /// into `Arc<str>`, returning the same `Arc` for duplicate strings.
 ///
@@ -395,34 +397,6 @@ impl StringCache {
     pub fn is_empty(&self) -> bool {
         self.cache.is_empty()
     }
-}
-
-// ---------------------------------------------------------------------------
-// Shared line-parsing logic
-// ---------------------------------------------------------------------------
-
-/// Generic log content parser shared by owned and zero-copy paths.
-///
-/// Iterates lines, calling `try_parse` on each. If it returns `Some(entry)`,
-/// the entry is collected. Otherwise the line is a continuation and is
-/// attached to the last entry via `push_continuation`.
-fn parse_log_lines<'a, T>(
-    content: &'a str,
-    mut try_parse: impl FnMut(&'a str) -> Option<T>,
-    mut push_continuation: impl FnMut(&mut T, &'a str),
-) -> Vec<T> {
-    let mut entries = Vec::with_capacity(content.lines().count());
-    for line in content.lines().filter(|line| !line.trim_start().is_empty()) {
-        match try_parse(line) {
-            Some(entry) => entries.push(entry),
-            None => {
-                if let Some(last) = entries.last_mut() {
-                    push_continuation(last, line);
-                }
-            }
-        }
-    }
-    entries
 }
 
 struct LogLineFields<'a> {
@@ -565,10 +539,3 @@ fn parse_bracketed(s: &str) -> Option<(&str, &str)> {
     let close = s.find(']')?;
     Some((&s[1..close], &s[close + 1..]))
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

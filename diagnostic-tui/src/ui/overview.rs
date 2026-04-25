@@ -1,5 +1,4 @@
 //! Rendering logic for the Overview tab.
-
 use crate::{
     app::{InputMode, OverviewState, Tab},
     format_bytes,
@@ -186,7 +185,7 @@ impl<'a> OverviewWidget<'a> {
     }
 }
 
-// -- Build content as a sequence of segments. --
+/// Mixed widgets.
 enum Segment<'a> {
     Lines(Vec<Line<'a>>),
     VaultTable {
@@ -339,7 +338,7 @@ impl StatefulWidget for OverviewWidget<'_> {
             lines.push(Line::from(""));
         }
 
-        // -- Feature Flags --
+        // Feature Flags
         if !sys.features.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -360,7 +359,7 @@ impl StatefulWidget for OverviewWidget<'_> {
             lines.push(Line::from(""));
         }
 
-        // -- Log file summary --
+        // Log file summary
         lines.extend([
             Line::from(Span::styled(
                 "Log Files",
@@ -408,7 +407,7 @@ impl StatefulWidget for OverviewWidget<'_> {
         }
         lines.push(Line::from(""));
 
-        // -- Crash reports count --
+        // Crash reports count
         lines.extend([
             Line::from(Span::styled(
                 "Crash Reports",
@@ -425,7 +424,7 @@ impl StatefulWidget for OverviewWidget<'_> {
             segments.push(Segment::Lines(lines));
         }
 
-        // -- Compute total line count and state. --
+        // Compute total line count and state.
         let total_lines = segments.iter().map(|s| s.height()).sum();
         state.line_count = total_lines;
 
@@ -433,7 +432,7 @@ impl StatefulWidget for OverviewWidget<'_> {
         let in_select = self.input_mode == InputMode::Select && self.tab == Tab::Overview;
         let cursor = state.cursor;
 
-        // -- Title. --
+        // Title.
         let show_copied = self
             .copied_at
             .is_some_and(|t| t.elapsed() < Duration::from_secs(2));
@@ -486,7 +485,7 @@ impl StatefulWidget for OverviewWidget<'_> {
         // Render collected Segments.
         self.render_segments(buf, segments, area, state);
 
-        // -- Scrollbar. --
+        // Scrollbar.
         let mut scrollbar_state = ScrollbarState::new(total_lines).position(state.cursor);
         Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))

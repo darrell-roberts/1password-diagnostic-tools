@@ -7,14 +7,6 @@
 //! - [`logs`] — rendering for the Logs tab (search bar, filter bar, log list, detail pane)
 //! - [`crashes`] — rendering for the Crash Reports tab (crash list and detail pane)
 //! - [`popups`] — popup overlays (source picker, log file picker, help screen)
-
-mod analysis;
-mod crashes;
-mod helpers;
-mod logs;
-mod overview;
-mod popups;
-
 use crate::app::{App, InputMode, Tab};
 use ratatui::{
     Frame,
@@ -30,9 +22,12 @@ use helpers::TAB_ACTIVE;
 use logs::LogsWidget;
 use overview::OverviewWidget;
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
+mod analysis;
+mod crashes;
+mod helpers;
+mod logs;
+mod overview;
+mod popups;
 
 /// Draw the entire UI for one frame.
 pub fn draw(frame: &mut Frame, app: &mut App) {
@@ -114,10 +109,6 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tab bar
-// ---------------------------------------------------------------------------
-
 fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let titles = Tab::ALL
         .iter()
@@ -147,10 +138,6 @@ fn draw_tab_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     frame.render_widget(tabs, area);
 }
-
-// ---------------------------------------------------------------------------
-// Status bar
-// ---------------------------------------------------------------------------
 
 fn draw_status_bar(frame: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let mode_hint = match app.input_mode {

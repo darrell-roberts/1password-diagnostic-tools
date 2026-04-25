@@ -1,9 +1,8 @@
-//! Shared scrollable-pane state used by the Overview and Analysis tabs.
-
+//! Shared scrollable pane state used by the Overview and Analysis tabs.
 use super::navigation::ensure_cursor_visible;
 
-/// Reusable scrollable-pane state shared by Overview, Analysis, and any
-/// future cursor-based single-pane tabs.
+/// Reusable scrollable pane state shared by Overview, Analysis, and any
+/// future cursor based single pane tabs.
 pub struct ScrollablePaneState {
     /// Scroll offset.
     pub scroll: u16,
@@ -13,7 +12,7 @@ pub struct ScrollablePaneState {
     pub select_anchor: Option<usize>,
     /// Total number of content lines (set during rendering).
     pub line_count: usize,
-    /// Last-known viewport height in rows.
+    /// Last known viewport height in rows.
     pub viewport_height: u16,
 }
 
