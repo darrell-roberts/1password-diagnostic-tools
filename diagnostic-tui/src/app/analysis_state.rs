@@ -186,7 +186,7 @@ impl<'a> AnalysisData<'a> {
         });
 
         // Timeline
-        let time_line = compute_timeline(entries);
+        let time_line = compute_timeline(entries).unwrap_or_default();
 
         // Panics
         let panics = entries
@@ -230,18 +230,13 @@ impl<'a> AnalysisData<'a> {
 }
 
 /// Timeline computation
-fn compute_timeline(entries: &[LogEntry<'_>]) -> TimeLine {
-    if entries.is_empty() {
-        return TimeLine::default();
-    }
+fn compute_timeline(entries: &[LogEntry<'_>]) -> Option<TimeLine> {
+    (!entries.is_empty()).then_some(())?;
 
-    let Some((first_ts, last_ts)) = entries
+    let (first_ts, last_ts) = entries
         .first()
         .map(|first| first.timestamp)
-        .zip(entries.last().map(|last| last.timestamp))
-    else {
-        return TimeLine::default();
-    };
+        .zip(entries.last().map(|last| last.timestamp))?;
 
     let span = last_ts - first_ts;
 
@@ -283,12 +278,12 @@ fn compute_timeline(entries: &[LogEntry<'_>]) -> TimeLine {
     // We track zero-activity by checking if error+warn is 0 in consecutive buckets.
     let gaps = detect_gaps(&buckets, bucket_delta, entries, first_ts, bucket_secs);
 
-    TimeLine {
+    Some(TimeLine {
         buckets,
         label,
         bursts,
         gaps,
-    }
+    })
 }
 
 fn detect_bursts(buckets: &[TimeBucket]) -> Vec<BurstInfo> {

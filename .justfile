@@ -22,3 +22,6 @@ test:
 
 clean:
     cargo clean
+
+debian:
+    cargo deb -p diagnostic-tui

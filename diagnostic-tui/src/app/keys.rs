@@ -312,7 +312,7 @@ impl App<'_> {
             // Copy single entry under cursor (Logs tab — list focused).
             KeyCode::Char('y') if self.tab == Tab::Logs => {
                 self.logs.select_anchor = self.logs.list_state.selected();
-                self.copy_selection();
+                self.copy_log_selection();
             }
 
             // Copy single line under cursor (Crash Reports — detail pane focused).
@@ -436,7 +436,7 @@ impl App<'_> {
                 self.input_mode = InputMode::Normal;
             }
             KeyCode::Char('y') => match target {
-                ListSelectTarget::Logs => self.copy_selection(),
+                ListSelectTarget::Logs => self.copy_log_selection(),
                 ListSelectTarget::Crashes => self.copy_crash_selection(),
             },
             _ => {}

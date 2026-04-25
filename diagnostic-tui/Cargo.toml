@@ -12,3 +12,18 @@ diagnostic-parser = { path = "../diagnostic-parser" }
 ratatui = "0.30"
 ratatui-widgets = "0.3"
 regex = "1"
+
+[package.metadata.deb]
+maintainer = "Darrell Roberts"
+copyright = "2026, Darrell Roberts"
+license-file = ["LICENSE", "4"]
+extended-description = """\
+A log viewer and analysis for 1Password diagnostic files.
+"""
+depends = "$auto"
+section = "utility"
+priority = "optional"
+assets = [
+    ["target/release/diagnostic-tui", "usr/bin/", "755"],
+    { source = "README.md", dest = "usr/share/doc/diagnostic-tui/README", mode = "644"},
+]
