@@ -1,14 +1,14 @@
 [package]
-name = "diagnostic-tui"
-version = "0.1.0"
 edition = "2024"
 license = "MIT"
+name = "diagnostic-tui"
+version = "0.1.0"
 
 [dependencies]
+arboard = "3"
+chrono = { workspace = true }
+crossterm = "0.29"
 diagnostic-parser = { path = "../diagnostic-parser" }
 ratatui = "0.30"
 ratatui-widgets = "0.3"
-crossterm = "0.29"
-chrono = { workspace = true }
-arboard = "3"
 regex = "1"
