@@ -1,9 +1,8 @@
 //! Keyboard input handling for each application mode.
 //!
 //! All `handle_*_key` methods live here to keep the main `App` impl focused
-//! on construction and high-level dispatch. Each method returns `true` when
+//! on construction and high level dispatch. Each method returns `true` when
 //! the application should quit.
-
 use crate::app::{
     App,
     navigation::ensure_cursor_visible,
@@ -11,13 +10,13 @@ use crate::app::{
 };
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
-/// Which table-backed list is active in visual-select mode.
+/// Which table backed list is active in visual select mode.
 pub(super) enum ListSelectTarget {
     Logs,
     Crashes,
 }
 
-/// Which cursor-based pane is active in visual-select mode.
+/// Which cursor based pane is active in visual select mode.
 pub(super) enum PaneSelectTarget {
     Overview,
     LogDetail,
@@ -66,7 +65,7 @@ impl App<'_> {
             self.copied_at = None;
         }
 
-        // Handle second key of a two-key `z` command.
+        // Handle second key of a two key `z` command.
         if self.pending_z {
             self.pending_z = false;
             match key.code {
@@ -363,7 +362,7 @@ impl App<'_> {
         false
     }
 
-    /// Handle keys while in visual-select mode on a table-backed list
+    /// Handle keys while in visual-select mode on a table backed list
     /// (Logs list or Crash list).
     pub(super) fn handle_list_select_key(
         &mut self,
@@ -445,7 +444,7 @@ impl App<'_> {
         false
     }
 
-    /// Handle keys while in visual-select mode on a cursor-based pane
+    /// Handle keys while in visual select mode on a cursor based pane
     /// (Overview, Log detail, or Crash detail).
     pub(super) fn handle_pane_select_key(
         &mut self,
@@ -559,9 +558,7 @@ impl App<'_> {
         false
     }
 
-    // -----------------------------------------------------------------------
     // Popup picker handlers
-    // -----------------------------------------------------------------------
 
     /// Handle keys when the source picker popup is open.
     pub(super) fn handle_source_picker_key(&mut self, key: KeyEvent) -> bool {

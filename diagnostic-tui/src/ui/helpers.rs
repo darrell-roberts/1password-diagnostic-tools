@@ -1,6 +1,5 @@
 //! Shared UI helper functions, color palette, and small utilities used
 //! across all rendering modules.
-
 use crate::app::filters::LevelFilter;
 use diagnostic_parser::log_entry::LogLevel;
 use ratatui::{
@@ -9,9 +8,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
-// ---------------------------------------------------------------------------
 // Color palette
-// ---------------------------------------------------------------------------
 
 pub const SELECT_BG: Color = Color::Rgb(60, 60, 40);
 pub const BORDER_FOCUSED: Color = Color::Cyan;
@@ -44,9 +41,7 @@ pub fn level_filter_color(filter: &LevelFilter) -> Color {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Key-value line builders
-// ---------------------------------------------------------------------------
 
 /// Create a key-value line with default indentation (2 spaces).
 pub fn kv_line(key: &str, value: &str) -> Line<'static> {
@@ -67,9 +62,7 @@ pub fn kv_line_indent(indent: usize, key: &str, value: &str) -> Line<'static> {
     ])
 }
 
-// ---------------------------------------------------------------------------
 // Help overlay entry
-// ---------------------------------------------------------------------------
 
 /// Build a single help-overlay line: a highlighted key label followed by a
 /// description.
@@ -86,9 +79,7 @@ pub fn help_entry<'a>(key: &'a str, desc: &'a str) -> Line<'a> {
     ])
 }
 
-// ---------------------------------------------------------------------------
 // Layout helpers
-// ---------------------------------------------------------------------------
 
 /// Return a centered `Rect` of the given size within `area`.
 pub fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {

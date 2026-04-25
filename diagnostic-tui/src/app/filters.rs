@@ -1,12 +1,6 @@
 //! Log entry filter types: level, source component, and log file.
-
-use std::collections::HashSet;
-
 use diagnostic_parser::{LogEntry, log_entry::LogLevel};
-
-// ---------------------------------------------------------------------------
-// Log level filter
-// ---------------------------------------------------------------------------
+use std::collections::HashSet;
 
 /// Minimum log level threshold for filtering entries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,9 +100,7 @@ impl LevelFilter {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Source filter
-// ---------------------------------------------------------------------------
 
 /// Optional filter by source component (e.g. "1P", "client", "status").
 #[derive(Debug, Clone)]
@@ -159,9 +151,7 @@ impl<'a> SourceFilter<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Log file filter
-// ---------------------------------------------------------------------------
 
 /// Optional filter by log file name (e.g. "app.log", "network.log").
 #[derive(Debug, Clone)]

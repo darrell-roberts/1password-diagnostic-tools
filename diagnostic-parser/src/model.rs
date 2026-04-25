@@ -3,14 +3,6 @@
 //! The top-level [`DiagnosticReport`] struct mirrors the JSON structure of the file
 //! and provides convenience methods for loading and inspecting the report.
 //!
-//! # Memory-efficient parsing
-//!
-//! For large diagnostic files, use [`DiagnosticReport::parse_log_entries`]
-//! instead of [`DiagnosticReport::parse_log_entries`]. The `_ref` variant
-//! returns [`LogEntry`] values that borrow string data directly from the
-//! log content already held by the report, avoiding ~33 MB of duplicate
-//! `String` allocations for a typical 36 MB file.
-
 use crate::{
     error::{DiagnosticError, Result},
     log_entry::{LogEntry, StringCache},
@@ -20,6 +12,9 @@ use memmap2::MmapOptions;
 use serde::{Deserialize, Deserializer, Serialize, de};
 use serde_json::Value;
 use std::{fmt, fs::File, ops::Not as _, path::Path};
+
+#[cfg(test)]
+mod tests;
 
 /// Deserialize a Unix timestamp that may be either an integer or a
 /// floating-point number, truncating any fractional seconds to produce an `i64`.
@@ -46,9 +41,7 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
 // Top-level report
-// ---------------------------------------------------------------------------
 
 /// A fully-parsed 1Password diagnostic report.
 ///
@@ -120,8 +113,6 @@ impl DiagnosticReport {
         Utc.timestamp_opt(self.created_at, 0).single()
     }
 
-    /// Zero-copy version of [`parse_log_entries`](Self::parse_log_entries).
-    ///
     /// Returns [`LogEntry`] values that borrow `&str` slices directly
     /// from the [`LogFile::content`] strings already owned by this report.
     /// High-repetition fields (`log_file_title`, `thread`) are shared via
@@ -131,12 +122,14 @@ impl DiagnosticReport {
     /// the entries.
     pub fn parse_log_entries(&self) -> (Vec<LogEntry<'_>>, StringCache) {
         let mut cache = StringCache::new();
-        let mut all_entries: Vec<LogEntry<'_>> = Vec::new();
+        let mut all_entries = Vec::new();
 
         for log_file in &self.logs {
-            let entries =
-                LogEntry::parse_log_content(&log_file.title, &log_file.content, &mut cache);
-            all_entries.extend(entries);
+            all_entries.extend(LogEntry::parse_log_content(
+                &log_file.title,
+                &log_file.content,
+                &mut cache,
+            ));
         }
 
         all_entries.sort_by_key(|e| e.timestamp);
@@ -152,9 +145,7 @@ impl DiagnosticReport {
     }
 }
 
-// ---------------------------------------------------------------------------
 // System information
-// ---------------------------------------------------------------------------
 
 /// Information about the host system and 1Password client.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,9 +326,7 @@ impl Extension {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Overview
-// ---------------------------------------------------------------------------
 
 /// High-level item / vault counts.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -355,9 +344,7 @@ pub struct Overview {
     pub inactive_items: u32,
 }
 
-// ---------------------------------------------------------------------------
 // Accounts & Vaults
-// ---------------------------------------------------------------------------
 
 /// Metadata for a single 1Password account.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,9 +605,7 @@ pub struct VaultItems {
     pub with_offline_changes: Vec<serde_json::Value>,
 }
 
-// ---------------------------------------------------------------------------
 // Log files
-// ---------------------------------------------------------------------------
 
 /// A single log file captured in the diagnostic report.
 ///
@@ -682,9 +667,7 @@ impl fmt::Display for LogFileCategory {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Crash report entries
-// ---------------------------------------------------------------------------
 
 /// A crash / panic report entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -745,9 +728,7 @@ impl CrashReportEntry {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Display implementations for summary output
-// ---------------------------------------------------------------------------
 
 impl fmt::Display for DiagnosticReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -832,10 +813,3 @@ impl fmt::Display for CrashReportEntry {
         Ok(())
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-#[cfg(test)]
-mod tests;

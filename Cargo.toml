@@ -1,8 +1,5 @@
 [workspace]
-members = [
-    "diagnostic-parser",
-    "diagnostic-tui",
-]
+members = ["diagnostic-parser", "diagnostic-tui"]
 resolver = "3"
 
 [workspace.dependencies]

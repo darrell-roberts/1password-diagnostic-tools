@@ -1,10 +1,7 @@
 //! Core state types used throughout the application.
-
-// ---------------------------------------------------------------------------
-// Active tab / panel
-// ---------------------------------------------------------------------------
-
 use ratatui::widgets::TableState;
+
+// Active tab / panel
 
 /// The top-level tab currently displayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,9 +46,7 @@ impl Tab {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Input mode
-// ---------------------------------------------------------------------------
 
 /// Whether the user is in normal navigation mode, typing into the search bar,
 /// or selecting a range of log entries.
@@ -63,9 +58,7 @@ pub enum InputMode {
     Select,
 }
 
-// ---------------------------------------------------------------------------
 // List state
-// ---------------------------------------------------------------------------
 
 /// Helper functions for key bindings.
 pub trait ContainerStateExt {

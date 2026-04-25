@@ -30,7 +30,7 @@ pub struct AnalysisWidget<'a> {
     pub copied_count: usize,
 }
 
-// -- Segment enum for mixed content types. --
+/// Segment enum for mixed content types.
 enum Segment<'a> {
     Lines(Vec<Line<'a>>),
     Sparkline { data: Vec<u64>, height: u16 },
@@ -120,9 +120,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
         let data = self.data;
         let mut segments: Vec<Segment> = Vec::new();
 
-        // ===================================================================
         // Section 1: Log Level Summary
-        // ===================================================================
         let mut lines = Vec::from([
             Line::from(Span::styled(
                 "Log Level Summary",
@@ -162,9 +160,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             Line::from(""),
         ]);
 
-        // ===================================================================
         // Section 2: Top Errors
-        // ===================================================================
         if !data.top_errors.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -212,9 +208,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             lines.push(Line::from(""));
         }
 
-        // ===================================================================
         // Section 3: Component Health
-        // ===================================================================
         if !data.component_health.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -268,9 +262,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             lines.push(Line::from(""));
         }
 
-        // ===================================================================
         // Section 4: Timeline
-        // ===================================================================
         if !data.time_line.buckets.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -393,9 +385,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             }
         }
 
-        // ===================================================================
         // Section 5: Panics
-        // ===================================================================
         if !data.panics.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -446,9 +436,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
             );
         }
 
-        // ===================================================================
         // Section 6: Crash Report Correlations
-        // ===================================================================
         if !data.crash_correlations.is_empty() {
             lines.extend([
                 Line::from(Span::styled(
@@ -561,7 +549,7 @@ impl StatefulWidget for AnalysisWidget<'_> {
         // Render collected Segments.
         self.render_segments(buf, segments, area, state);
 
-        // -- Scrollbar. --
+        // Scrollbar.
         let mut scrollbar_state = ScrollbarState::new(state.line_count).position(state.cursor);
         Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("\u{2191}"))
@@ -576,10 +564,6 @@ impl StatefulWidget for AnalysisWidget<'_> {
             );
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 /// Apply cursor/selection styling to a line.
 fn style_line<'a>(

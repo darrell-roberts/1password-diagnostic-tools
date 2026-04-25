@@ -1,6 +1,5 @@
 //! Rendering logic for the Logs tab: search bar, filter bar, log list, and
 //! log detail pane.
-
 use crate::{
     app::{InputMode, LogsState},
     ui::helpers::{BORDER_FOCUSED, BORDER_NORMAL, SELECT_BG, level_color, level_filter_color},
@@ -31,10 +30,7 @@ pub struct LogsWidget<'a> {
 }
 
 impl LogsWidget<'_> {
-    // ---------------------------------------------------------------------------
-    // Log list
-    // ---------------------------------------------------------------------------
-
+    /// Log list
     fn render_log_list(&self, state: &mut LogsState, area: Rect, buf: &mut Buffer) {
         let border_color = if state.show_detail && state.detail_focused {
             BORDER_NORMAL
@@ -219,10 +215,7 @@ impl LogsWidget<'_> {
             );
     }
 
-    // ---------------------------------------------------------------------------
-    // Log detail pane
-    // ---------------------------------------------------------------------------
-
+    /// Log detail pane
     fn render_log_detail(&self, state: &mut LogsState, area: Rect, buf: &mut Buffer) {
         // Get the selected entry data.
         let entry_data = state
@@ -404,10 +397,7 @@ impl LogsWidget<'_> {
             .render(area, buf);
     }
 
-    // ---------------------------------------------------------------------------
-    // Search bar
-    // ---------------------------------------------------------------------------
-
+    /// Search bar
     fn render_search_bar(&self, state: &mut LogsState, area: Rect, buf: &mut Buffer) {
         let input_mode = self.input_mode;
         let (border_color, cursor_visible) = match input_mode {
@@ -450,10 +440,7 @@ impl LogsWidget<'_> {
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Filter bar
-    // ---------------------------------------------------------------------------
-
+    /// Filter bar
     fn render_filter_bar(&self, state: &LogsState, area: Rect, buf: &mut Buffer) {
         Paragraph::new(Line::from(Vec::from([
             Span::raw("  "),
@@ -534,10 +521,7 @@ impl<'a> StatefulWidget for LogsWidget<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Search highlighting
-// ---------------------------------------------------------------------------
-
+/// Search highlighting
 fn highlight_matches<'a>(
     text: &'a str,
     query_lower: &str,

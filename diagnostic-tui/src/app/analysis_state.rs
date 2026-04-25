@@ -3,7 +3,6 @@
 //! [`AnalysisData`] holds pre-computed analytics derived from the parsed
 //! log entries and crash reports. [`AnalysisState`] reuses
 //! [`ScrollablePaneState`] for scrollable-pane navigation.
-
 use super::pane_state::ScrollablePaneState;
 use chrono::{DateTime, FixedOffset, TimeDelta};
 use diagnostic_parser::{LogEntry, log_entry::LogLevel, model::CrashReportEntry};
@@ -15,10 +14,6 @@ mod test;
 
 /// Persistent state for the Analysis tab.
 pub type AnalysisState = ScrollablePaneState;
-
-// ---------------------------------------------------------------------------
-// Computed analysis data
-// ---------------------------------------------------------------------------
 
 /// Pre-computed analytics over log entries and crash reports.
 pub struct AnalysisData<'a> {
@@ -34,7 +29,7 @@ pub struct AnalysisData<'a> {
     pub time_line: TimeLine,
     /// Summary of all panic log entries.
     pub panics: Vec<PanicSummary<'a>>,
-    /// Crash-to-panic correlations.
+    /// Crash to panic correlations.
     pub crash_correlations: Vec<CrashCorrelation<'a>>,
 }
 
@@ -115,16 +110,12 @@ pub struct TimeLine {
     pub gaps: Vec<GapInfo>,
 }
 
-// ---------------------------------------------------------------------------
-// Computation
-// ---------------------------------------------------------------------------
-
 impl<'a> AnalysisData<'a> {
     /// Compute all analytics from parsed log entries and crash reports.
     pub fn analyze(entries: &'a [LogEntry<'a>], crashes: &'a [CrashReportEntry]) -> Self {
         let total_entries = entries.len();
 
-        // -- Level counts & component stats (single pass) --
+        // Level counts & component stats (single pass)
         let mut level_counts = [0; 5];
         let mut component_map: HashMap<&str, ComponentCounts> = HashMap::new();
         let mut error_map: HashMap<Cow<'_, str>, ErrorMessageData> = HashMap::new();
@@ -166,7 +157,7 @@ impl<'a> AnalysisData<'a> {
             }
         }
 
-        // -- Top errors --
+        // Top errors
         let mut top_errors = error_map
             .into_values()
             .map(|error_message_data| ErrorGroup {
@@ -178,7 +169,7 @@ impl<'a> AnalysisData<'a> {
         top_errors.sort_by_key(|error_group| std::cmp::Reverse(error_group.count));
         top_errors.truncate(20);
 
-        // -- Component health --
+        // Component health
         let mut component_health = component_map
             .into_iter()
             .map(|(component, component_counts)| ComponentStats {
@@ -194,10 +185,10 @@ impl<'a> AnalysisData<'a> {
                 .then(b.warn_count.cmp(&a.warn_count))
         });
 
-        // -- Timeline --
+        // Timeline
         let time_line = compute_timeline(entries);
 
-        // -- Panics --
+        // Panics
         let panics = entries
             .iter()
             .filter(|e| e.is_panic())
@@ -210,7 +201,7 @@ impl<'a> AnalysisData<'a> {
             })
             .collect::<Vec<_>>();
 
-        // -- Crash correlations --
+        // Crash correlations
         let crash_correlations = crashes
             .iter()
             .map(|crash| {
@@ -238,10 +229,7 @@ impl<'a> AnalysisData<'a> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Timeline computation
-// ---------------------------------------------------------------------------
-
+/// Timeline computation
 fn compute_timeline(entries: &[LogEntry<'_>]) -> TimeLine {
     if entries.is_empty() {
         return TimeLine::default();
@@ -404,10 +392,6 @@ fn detect_gaps(
     gaps
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /// Matcher for a 26 character uuid.
 static ID_MATCHER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[A-Za-z0-9]{26}").unwrap());
 
@@ -416,19 +400,16 @@ fn normalize<'a>(msg: &'a str) -> Cow<'a, str> {
     ID_MATCHER.replace_all(msg, "<ID>")
 }
 
-// ---------------------------------------------------------------------------
 // Plain-text builder (for clipboard)
-// ---------------------------------------------------------------------------
-
 impl AnalysisData<'_> {
-    /// Build plain-text lines that mirror the rendered analysis view
-    /// line-for-line. Used for clipboard copy operations.
+    /// Build plain text lines that mirror the rendered analysis view
+    /// line for line. Used for clipboard copy operations.
     ///
     /// **Important**: every section here must produce the exact same number
     /// of lines as the corresponding section in `ui/analysis.rs`, including
-    /// blank lines, so that cursor-based selection copies the right content.
+    /// blank lines, so that cursor based selection copies the right content.
     pub fn build_plain_text_lines(&self) -> Vec<String> {
-        // -- Section 1: Log Level Summary --
+        // Section 1: Log Level Summary
         // UI: header, blank, 5 levels, total, blank = 9 lines
         let mut lines = Vec::from(["Log Level Summary".to_string(), String::new()]);
 
@@ -441,7 +422,7 @@ impl AnalysisData<'_> {
 
         lines.extend([format!("  Total  {}", self.total_entries), String::new()]);
 
-        // -- Section 2: Top Errors --
+        // Section 2: Top Errors
         if !self.top_errors.is_empty() {
             lines.extend([
                 format!("Top Errors ({})", self.top_errors.len()),
@@ -464,7 +445,7 @@ impl AnalysisData<'_> {
             lines.push(String::new());
         }
 
-        // -- Section 3: Component Health --
+        // Section 3: Component Health
         if !self.component_health.is_empty() {
             lines.extend([
                 "Component Health".to_string(),
@@ -485,8 +466,8 @@ impl AnalysisData<'_> {
             lines.push(String::new());
         }
 
-        // -- Section 4: Timeline --
-        // UI: header, blank, time-range label, blank = 4 Lines
+        // Section 4: Timeline
+        // UI: header, blank, time range label, blank = 4 Lines
         //     then Sparkline segment (height=3)
         //     then blank, bursts/gaps lines, trailing blank
         if !self.time_line.buckets.is_empty() {
@@ -513,7 +494,7 @@ impl AnalysisData<'_> {
                 ]);
             }
 
-            // Sparkline occupies 3 rendered rows — emit 3 placeholder lines.
+            // Sparkline occupies 3 rendered rows, emit 3 placeholder lines.
             lines.extend([
                 "  [sparkline row 1]".to_string(),
                 "  [sparkline row 2]".to_string(),
@@ -559,7 +540,7 @@ impl AnalysisData<'_> {
             }
         }
 
-        // -- Section 5: Panics --
+        // Section 5: Panics
         // UI: 3 lines per panic (timestamp+thread, message, log+stacktrace)
         if !self.panics.is_empty() {
             lines.extend([format!("Panics ({})", self.panics.len()), String::new()]);
@@ -586,7 +567,7 @@ impl AnalysisData<'_> {
             lines.push(String::new());
         }
 
-        // -- Section 6: Crash Correlations --
+        // Section 6: Crash Correlations
         // UI: report_id line, crash_at line (conditional), matched line, blank
         if !self.crash_correlations.is_empty() {
             lines.extend([
