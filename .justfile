@@ -14,8 +14,11 @@ check: format
 build: check
     cargo build -p diagnostic-tui
 
-install: build
+install:
     cargo install --path diagnostic-tui
 
 test:
     cargo test
+
+clean:
+    cargo clean
