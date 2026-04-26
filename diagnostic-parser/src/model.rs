@@ -439,6 +439,26 @@ pub enum AccountState {
     #[serde(rename = "A")]
     Active,
 
+    /// Deleted.
+    #[serde(rename = "D")]
+    Deleted,
+
+    /// Ejected Pending Activation.
+    #[serde(rename = "E")]
+    Ejected,
+
+    /// Purging.
+    #[serde(rename = "X")]
+    Purging,
+
+    /// Purged.
+    #[serde(rename = "Z")]
+    Purged,
+
+    /// Registered.
+    #[serde(rename = "R")]
+    Registered,
+
     /// Suspended.
     #[serde(rename = "S")]
     Suspended,
@@ -454,6 +474,11 @@ impl AccountState {
             AccountState::Active => "Active",
             AccountState::Suspended => "Suspended",
             AccountState::Other => "Other",
+            AccountState::Deleted => "Deleted",
+            AccountState::Ejected => "Ejected",
+            AccountState::Purging => "Purging",
+            AccountState::Purged => "Purged",
+            AccountState::Registered => "Registered",
         }
     }
 }
@@ -467,13 +492,25 @@ impl fmt::Display for AccountState {
 /// Billing status codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BillingStatus {
-    /// Trialing.
-    #[serde(rename = "T")]
-    Trial,
-
     /// Active / paid.
     #[serde(rename = "A")]
     Active,
+
+    /// Pending.
+    #[serde(rename = "P")]
+    Pending,
+
+    /// Cancel at end.
+    #[serde(rename = "C")]
+    CancelAtEnd,
+
+    /// Lapsed.
+    #[serde(rename = "L")]
+    Lapsed,
+
+    /// Trialing.
+    #[serde(rename = "T")]
+    Trial,
 
     /// Grace period.
     #[serde(rename = "G")]
@@ -496,6 +533,9 @@ impl BillingStatus {
             BillingStatus::Grace => "Grace",
             BillingStatus::Frozen => "Frozen",
             BillingStatus::Other => "Other",
+            BillingStatus::Pending => "Pending",
+            BillingStatus::CancelAtEnd => "CancelAtEnd",
+            BillingStatus::Lapsed => "Lapsed",
         }
     }
 }
@@ -563,6 +603,22 @@ pub enum VaultType {
     #[serde(rename = "E")]
     Everyone,
 
+    /// Transfer.
+    #[serde(rename = "T")]
+    Transfer,
+
+    /// System.
+    #[serde(rename = "S")]
+    System,
+
+    /// Managed Applications.
+    #[serde(rename = "M")]
+    ManagedApplications,
+
+    /// Developer Environment.
+    #[serde(rename = "D")]
+    DeveloperEnvironment,
+
     /// Unknown / other type.
     #[serde(other)]
     Other,
@@ -575,6 +631,10 @@ impl VaultType {
             VaultType::UserCreated => "User Created",
             VaultType::Everyone => "Everyone",
             VaultType::Other => "Other",
+            VaultType::Transfer => "Transfer",
+            VaultType::System => "System",
+            VaultType::ManagedApplications => "ManagedApplications",
+            VaultType::DeveloperEnvironment => "DeveloperEnvironment",
         }
     }
 }
