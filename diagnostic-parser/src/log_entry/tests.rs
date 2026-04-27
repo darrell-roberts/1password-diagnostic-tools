@@ -130,9 +130,9 @@ fn cache_deduplicates() {
     let b = cache.cached("ThreadId(7)");
 
     // Same pointer for identical strings.
-    assert!(Arc::ptr_eq(&a1, &a2));
+    assert!(Rc::ptr_eq(&a1, &a2));
     // Different pointer for different strings.
-    assert!(!Arc::ptr_eq(&a1, &b));
+    assert!(!Rc::ptr_eq(&a1, &b));
     assert_eq!(cache.len(), 2);
 }
 
@@ -146,10 +146,10 @@ fn cache_shared_across_files() {
     let entries1 = LogEntry::parse_log_content("/file1", content1, &mut cache);
     let entries2 = LogEntry::parse_log_content("/file2", content2, &mut cache);
 
-    // Thread Arc is shared across files.
-    assert!(Arc::ptr_eq(&entries1[0].thread, &entries2[0].thread));
+    // Thread Rc is shared across files.
+    assert!(Rc::ptr_eq(&entries1[0].thread, &entries2[0].thread));
     // Log file titles are different.
-    assert!(!Arc::ptr_eq(
+    assert!(!Rc::ptr_eq(
         &entries1[0].log_file_title,
         &entries2[0].log_file_title
     ));

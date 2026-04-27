@@ -29,14 +29,14 @@
 //! - [`LogEntry<'a>`] — Zero-copy. String fields borrow `&'a str` slices
 //!   directly from the log content that is already in memory, and high-
 //!   repetition fields (`log_file_title`, `thread`) are shared via
-//!   [`Arc<str>`]. Parsing into `LogEntry` performs **zero heap
+//!   [`Rc<str>`]. Parsing into `LogEntry` performs **zero heap
 //!   allocations** for the common case (no continuation lines). Continuation
 //!   lines are stored as `&'a str` slices as well.
 //!
 //! A `LogEntry` can be promoted to a `LogEntry` via [`LogEntry::to_owned`]
 //! when you need to store it beyond the lifetime of the backing data.
 use chrono::{DateTime, FixedOffset};
-use std::{borrow::Cow, collections::HashSet, fmt, sync::Arc};
+use std::{borrow::Cow, collections::HashSet, fmt, rc::Rc};
 
 #[cfg(test)]
 mod tests;
@@ -226,17 +226,17 @@ fn extract_line_number(detail: &str) -> Option<u32> {
 /// original log content.
 ///
 /// `'a` is the lifetime of the backing log content string. The
-/// `log_file_title` and `thread` fields use [`Arc<str>`] for cheap
+/// `log_file_title` and `thread` fields use [`Rc<str>`] for cheap
 /// sharing — there are typically only a handful of distinct values
 /// repeated across thousands of entries.
 ///
 /// For the common case (no continuation lines) parsing a `LogEntry`
-/// performs **zero heap allocations** beyond the `Arc` lookups in the
+/// performs **zero heap allocations** beyond the `Rc` lookups in the
 /// cache set (which are shared across all entries).
 #[derive(Debug, Clone)]
 pub struct LogEntry<'a> {
-    /// The title of the log file this entry came from (shared via `Arc`).
-    pub log_file_title: Arc<str>,
+    /// The title of the log file this entry came from (shared via `Rc`).
+    pub log_file_title: Rc<str>,
 
     /// Severity level.
     pub level: LogLevel,
@@ -244,9 +244,9 @@ pub struct LogEntry<'a> {
     /// Timestamp with timezone offset as written in the log line.
     pub timestamp: DateTime<FixedOffset>,
 
-    /// Thread identifier string (shared via `Arc`). There are typically
+    /// Thread identifier string (shared via `Rc`). There are typically
     /// very few distinct thread IDs across an entire diagnostic report.
-    pub thread: Arc<str>,
+    pub thread: Rc<str>,
 
     /// Parsed source / component tag from the brackets (zero-copy).
     pub source: LogSourceRef<'a>,
@@ -262,8 +262,8 @@ pub struct LogEntry<'a> {
 
 impl<'a> LogEntry<'a> {
     /// Parse all log lines from a single log file's content into zero-copy
-    /// entries. Uses [`Arc<str>`] cache to deduplicate `log_file_title` and `thread`
-    /// strings via [`Arc<str>`].
+    /// entries. Uses [`Rc<str>`] cache to deduplicate `log_file_title` and `thread`
+    /// strings via [`Rc<str>`].
     ///
     /// If you don't have a cache, use [`StringCache::new()`] to create
     /// one. Sharing a single cache across multiple log files maximizes
@@ -290,7 +290,7 @@ impl<'a> LogEntry<'a> {
 
     /// Attempt to parse a single log line into a zero-copy [`LogEntry`].
     fn parse_line(
-        log_file_title: &Arc<str>,
+        log_file_title: &Rc<str>,
         line: &'a str,
         cache: &mut StringCache,
     ) -> Option<Self> {
@@ -299,7 +299,7 @@ impl<'a> LogEntry<'a> {
         let thread = cache.cached(line_parts.thread);
 
         Some(Self {
-            log_file_title: Arc::clone(log_file_title),
+            log_file_title: Rc::clone(log_file_title),
             level: line_parts.level,
             timestamp: line_parts.timestamp,
             thread,
@@ -358,14 +358,14 @@ impl fmt::Display for LogEntry<'_> {
 }
 
 /// A simple string cache backed by a [`HashMap`]. Converts `&str` values
-/// into `Arc<str>`, returning the same `Arc` for duplicate strings.
+/// into `Rc<str>`, returning the same `Rc` for duplicate strings.
 ///
 /// This is used to deduplicate high-repetition fields like `log_file_title`
 /// (only ~212 unique values across 127 k entries) and `thread` (typically
 /// fewer than 10 unique values).
 #[derive(Debug, Default, Clone)]
 pub struct StringCache {
-    cache: HashSet<Arc<str>>,
+    cache: HashSet<Rc<str>>,
 }
 
 impl StringCache {
@@ -374,14 +374,14 @@ impl StringCache {
         Self::default()
     }
 
-    /// Cache a string, returning a shared [`Arc<str>`]. If the string has
-    /// been cached before, the existing `Arc` is cloned (cheap reference
-    /// count bump). Otherwise a new `Arc<str>` is allocated.
-    pub fn cached(&mut self, s: &str) -> Arc<str> {
+    /// Cache a string, returning a shared [`Rc<str>`]. If the string has
+    /// been cached before, the existing `Rc` is cloned (cheap reference
+    /// count bump). Otherwise a new `Rc<str>` is allocated.
+    pub fn cached(&mut self, s: &str) -> Rc<str> {
         match self.cache.get(s) {
-            Some(s) => Arc::clone(s),
+            Some(s) => Rc::clone(s),
             None => {
-                let copy: Arc<str> = Arc::from(s);
+                let copy: Rc<str> = Rc::from(s);
                 self.cache.insert(copy.clone());
                 copy
             }
