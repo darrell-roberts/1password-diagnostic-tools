@@ -116,7 +116,7 @@ impl DiagnosticReport {
     /// Returns [`LogEntry`] values that borrow `&str` slices directly
     /// from the [`LogFile::content`] strings already owned by this report.
     /// High-repetition fields (`log_file_title`, `thread`) are shared via
-    /// [`Arc<str>`](std::sync::Arc) through a [`StringCache`].
+    /// [`Rc<str>`](std::sync::Rc) through a [`StringCache`].
     ///
     /// The returned entries borrow from `&self`, so the report must outlive
     /// the entries.
